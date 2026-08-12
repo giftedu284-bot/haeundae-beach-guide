@@ -7,6 +7,19 @@ const beachCellsByRow = {
   A: [4, 12], B: [2, 12], C: [1, 12], D: [1, 12],
   E: [1, 11], F: [2, 10], G: [4, 9]
 };
+// OpenStreetMap natural=beach boundary (way 107531972), simplified for display.
+// This is a public-data prototype boundary, not a surveyed emergency-services boundary.
+const beachBoundary = [
+  [35.1592391,129.1622327],[35.1594990,129.1634920],[35.1596393,129.1647151],
+  [35.1595604,129.1679445],[35.1595284,129.1684263],[35.1592851,129.1696193],
+  [35.1586275,129.1692216],[35.1588973,129.1677853],[35.1587310,129.1653382],
+  [35.1585189,129.1631374],[35.1581019,129.1610843],[35.1576022,129.1590037],
+  [35.1564239,129.1557987],[35.1558795,129.1549044],[35.1556554,129.1546597],
+  [35.1565279,129.1544317],[35.1572008,129.1552201],[35.1579596,129.1569151],
+  [35.1586095,129.1586556],[35.1591353,129.1614219]
+];
+const geoGrid = new Map();
+let selectedGeoCell;
 const storageKey = "haeundae-beach-guide-reports";
 let selected = "6-D";
 let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
@@ -25,6 +38,53 @@ function reportAt(address) { return reports.find((report) => report.grid === add
 function isBeachCell(row, column) {
   const [first, last] = beachCellsByRow[row];
   return column >= first && column <= last;
+}
+function letterLabel(index) {
+  let value = index + 1;
+  let label = "";
+  while (value > 0) { value--; label = String.fromCharCode(65 + (value % 26)) + label; value = Math.floor(value / 26); }
+  return label;
+}
+function isInsideBeach(lat, lng) {
+  let inside = false;
+  for (let i = 0, j = beachBoundary.length - 1; i < beachBoundary.length; j = i++) {
+    const [latI, lngI] = beachBoundary[i];
+    const [latJ, lngJ] = beachBoundary[j];
+    const crosses = (latI > lat) !== (latJ > lat) && lng < ((lngJ - lngI) * (lat - latI)) / (latJ - latI) + lngI;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+function selectGeoCell(address, polygon) {
+  if (selectedGeoCell) selectedGeoCell.setOptions({ fillOpacity: 0.08, strokeColor: "#237a8b" });
+  selectedGeoCell = polygon;
+  selectedGeoCell.setOptions({ fillOpacity: 0.52, fillColor: "#f6b73c", strokeColor: "#d76b00" });
+  selectAddress(address);
+}
+function renderGeographicGrid(map) {
+  const latitudes = beachBoundary.map(([lat]) => lat);
+  const longitudes = beachBoundary.map(([, lng]) => lng);
+  const minLat = Math.min(...latitudes), maxLat = Math.max(...latitudes);
+  const minLng = Math.min(...longitudes), maxLng = Math.max(...longitudes);
+  const latStep = 10 / 111320;
+  const lngStep = 10 / (111320 * Math.cos(((minLat + maxLat) / 2) * Math.PI / 180));
+  let count = 0;
+  for (let row = 0, lat = minLat; lat < maxLat; row++, lat += latStep) {
+    for (let column = 0, lng = minLng; lng < maxLng; column++, lng += lngStep) {
+      const centerLat = lat + latStep / 2, centerLng = lng + lngStep / 2;
+      if (!isInsideBeach(centerLat, centerLng)) continue;
+      const address = `${column + 1}-${letterLabel(row)}`;
+      const polygon = new window.kakao.maps.Polygon({
+        map,
+        path: [[lat,lng],[lat + latStep,lng],[lat + latStep,lng + lngStep],[lat,lng + lngStep]].map(([y,x]) => new window.kakao.maps.LatLng(y,x)),
+        strokeWeight: 1, strokeColor: "#237a8b", strokeOpacity: 0.72, fillColor: "#70d1d2", fillOpacity: 0.08
+      });
+      window.kakao.maps.event.addListener(polygon, "click", () => selectGeoCell(address, polygon));
+      geoGrid.set(address, polygon);
+      count++;
+    }
+  }
+  setNotice(`실제 해안선 경계 안에 ${count.toLocaleString()}개의 10m 격자를 만들었어요. 격자를 눌러 주소를 선택하세요.`);
 }
 
 function renderGrid() {
@@ -90,7 +150,11 @@ function initKakaoMap() {
     const mapElement = document.querySelector("#kakaoMap");
     Object.assign(mapElement.style, { position: "absolute", inset: "0", zIndex: "0", pointerEvents: "none" });
     const map = new window.kakao.maps.Map(mapElement, { center: new window.kakao.maps.LatLng(HAEUNDAE.lat, HAEUNDAE.lng), level: 4 });
-    new window.kakao.maps.Marker({ position: new window.kakao.maps.LatLng(HAEUNDAE.lat, HAEUNDAE.lng), map, title: "해운대해수욕장" });
+    const bounds = new window.kakao.maps.LatLngBounds();
+    beachBoundary.forEach(([lat, lng]) => bounds.extend(new window.kakao.maps.LatLng(lat, lng)));
+    map.setBounds(bounds);
+    new window.kakao.maps.Polygon({ map, path: beachBoundary.map(([lat, lng]) => new window.kakao.maps.LatLng(lat, lng)), strokeWeight: 3, strokeColor: "#0e7088", strokeOpacity: 0.9, fillColor: "#80d8d4", fillOpacity: 0.13 });
+    renderGeographicGrid(map);
     document.querySelector("#mapFallback").style.display = "none";
   });
 }
