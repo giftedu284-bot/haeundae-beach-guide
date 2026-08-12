@@ -28,6 +28,7 @@ const geoGrid = new Map();
 let selectedGeoCell;
 let kakaoMap;
 let myLocationMarker;
+let searchOverlays = [];
 const storageKey = "haeundae-beach-guide-reports";
 // Address convention imported from haeundae-grid-map-share: rows A/B/C run
 // from the promenade toward the sea, while columns 1/2/3 run west to east.
@@ -124,6 +125,27 @@ function findGeoCell(lat, lng) {
   }
   return null;
 }
+function clearSearchOverlays() {
+  searchOverlays.forEach((overlay) => overlay.setMap(null));
+  searchOverlays = [];
+}
+function renderSearchOverlays() {
+  if (!kakaoMap || !window.kakao || !window.kakao.maps) return;
+  clearSearchOverlays();
+  reports.forEach((report) => {
+    const cell = geoGrid.get(report.grid);
+    if (!cell) return;
+    const path = cell.localPath.map(({ u, v }) => {
+      const { lat, lng } = toLatLng(u, v);
+      return new window.kakao.maps.LatLng(lat, lng);
+    });
+    const alertCell = new window.kakao.maps.Polygon({ map: kakaoMap, path, strokeWeight: 3, strokeColor: "#d93636", strokeOpacity: 1, fillColor: "#e74c4c", fillOpacity: 0.48 });
+    const centre = cell.localPath.reduce((sum, point) => ({ u: sum.u + point.u / 4, v: sum.v + point.v / 4 }), { u: 0, v: 0 });
+    const { lat, lng } = toLatLng(centre.u, centre.v);
+    const range = new window.kakao.maps.Circle({ map: kakaoMap, center: new window.kakao.maps.LatLng(lat, lng), radius: 35, strokeWeight: 2, strokeColor: "#d93636", strokeOpacity: 0.9, strokeStyle: "shortdash", fillColor: "#e74c4c", fillOpacity: 0.1 });
+    searchOverlays.push(alertCell, range);
+  });
+}
 function locateMe() {
   const button = document.querySelector("#locateMe");
   if (!navigator.geolocation) { setNotice("이 기기에서는 GPS 위치 기능을 사용할 수 없어요."); return; }
@@ -176,10 +198,11 @@ function renderGeographicGrid(map) {
         strokeWeight: 1, strokeColor: "#237a8b", strokeOpacity: 0.72, fillColor: "#70d1d2", fillOpacity: 0.08
       });
       window.kakao.maps.event.addListener(polygon, "click", () => selectGeoCell(address, polygon));
-      geoGrid.set(address, { polygon, localPath });
+  geoGrid.set(address, { polygon, localPath });
       count++;
   }
   setNotice(`모래사장 경계 안에 완전히 들어가는 ${count.toLocaleString()}개의 10m × 10m 격자를 만들었어요.`);
+  renderSearchOverlays();
 }
 
 function renderGrid() {
@@ -261,7 +284,10 @@ function registerReport(event) {
   const description = document.querySelector("#childDescription").value.trim();
   reports = reports.filter((report) => report.grid !== selected);
   reports.push({ grid: selected, name, description, createdAt: new Date().toISOString() });
-  saveReports(); renderGrid(); setNotice(`긴급 수색 알림을 ${addressText()}에 등록했어요. 112 또는 현장 안전요원에게도 알려주세요.`);
+  saveReports(); renderGrid(); renderSearchOverlays();
+  document.querySelector("#reportResult").hidden = false;
+  document.querySelector("#reportResult").textContent = `${addressText()}이 지도에서 빨간색으로 표시됐어요. 이 신고는 현재 이 기기에서만 저장됩니다.`;
+  setNotice(`수색 표시를 ${addressText()}에 등록했어요. 112 또는 현장 안전요원에게도 알려주세요.`);
   event.target.reset();
 }
 
