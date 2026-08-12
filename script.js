@@ -64,41 +64,44 @@ function isInsideBeach(lat, lng) {
   }
   return inside;
 }
-// Work in a local metre-based coordinate system rotated to match Haeundae's shoreline.
+// Work in local metres.  The grid is built between the land-side and sea-side
+// beach outlines, so it follows the curve instead of using one fixed angle.
 const gridOrigin = { lat: 35.1577, lng: 129.1618 };
-const shoreAngle = 14 * Math.PI / 180;
 const metresPerLat = 111320;
 const metresPerLng = 111320 * Math.cos(gridOrigin.lat * Math.PI / 180);
 function toLocal(lat, lng) {
   const east = (lng - gridOrigin.lng) * metresPerLng;
   const north = (lat - gridOrigin.lat) * metresPerLat;
-  return { u: east * Math.cos(shoreAngle) + north * Math.sin(shoreAngle), v: -east * Math.sin(shoreAngle) + north * Math.cos(shoreAngle) };
+  return { u: east, v: north };
 }
 function toLatLng(u, v) {
-  const east = u * Math.cos(shoreAngle) - v * Math.sin(shoreAngle);
-  const north = u * Math.sin(shoreAngle) + v * Math.cos(shoreAngle);
-  return { lat: gridOrigin.lat + north / metresPerLat, lng: gridOrigin.lng + east / metresPerLng };
+  return { lat: gridOrigin.lat + v / metresPerLat, lng: gridOrigin.lng + u / metresPerLng };
 }
-function clipByAxis(points, axis, limit, keepGreater) {
-  const output = [];
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const a = points[j], b = points[i];
-    const aInside = keepGreater ? a[axis] >= limit : a[axis] <= limit;
-    const bInside = keepGreater ? b[axis] >= limit : b[axis] <= limit;
-    if (aInside !== bInside) {
-      const t = (limit - a[axis]) / (b[axis] - a[axis]);
-      output.push({ u: a.u + t * (b.u - a.u), v: a.v + t * (b.v - a.v) });
+const landEdge = [...beachBoundary.slice(15), ...beachBoundary.slice(0, 6)].map(([lat, lng]) => toLocal(lat, lng));
+const seaEdge = beachBoundary.slice(6, 15).reverse().map(([lat, lng]) => toLocal(lat, lng));
+function distance(a, b) { return Math.hypot(b.u - a.u, b.v - a.v); }
+function pathLength(path) { return path.slice(1).reduce((total, point, index) => total + distance(path[index], point), 0); }
+function pointAlong(path, fraction) {
+  const target = pathLength(path) * Math.max(0, Math.min(1, fraction));
+  let travelled = 0;
+  for (let index = 1; index < path.length; index++) {
+    const start = path[index - 1], end = path[index], segment = distance(start, end);
+    if (travelled + segment >= target) {
+      const ratio = segment ? (target - travelled) / segment : 0;
+      return { u: start.u + (end.u - start.u) * ratio, v: start.v + (end.v - start.v) * ratio };
     }
-    if (bInside) output.push(b);
+    travelled += segment;
   }
-  return output;
+  return path[path.length - 1];
 }
-function clippedBeachCell(u, v, size) {
-  let points = beachBoundary.map(([lat, lng]) => toLocal(lat, lng));
-  points = clipByAxis(points, "u", u, true);
-  points = clipByAxis(points, "u", u + size, false);
-  points = clipByAxis(points, "v", v, true);
-  return clipByAxis(points, "v", v + size, false);
+function pointBetween(a, b, ratio) { return { u: a.u + (b.u - a.u) * ratio, v: a.v + (b.v - a.v) * ratio }; }
+function pointInPolygon(point, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i], b = polygon[j];
+    if ((a.v > point.v) !== (b.v > point.v) && point.u < ((b.u - a.u) * (point.v - a.v)) / (b.v - a.v) + a.u) inside = !inside;
+  }
+  return inside;
 }
 function selectGeoCell(address, polygon) {
   if (selectedGeoCell) selectedGeoCell.setOptions({ fillOpacity: 0.08, strokeColor: "#237a8b" });
@@ -110,7 +113,7 @@ function findGeoCell(lat, lng) {
   if (!isInsideBeach(lat, lng)) return null;
   const point = toLocal(lat, lng);
   for (const [address, cell] of geoGrid) {
-    if (point.u >= cell.u && point.u < cell.u + 10 && point.v >= cell.v && point.v < cell.v + 10) return { address, cell };
+    if (pointInPolygon(point, cell.localPath)) return { address, cell };
   }
   return null;
 }
@@ -141,28 +144,33 @@ function locateMe() {
   );
 }
 function renderGeographicGrid(map) {
-  const localBoundary = beachBoundary.map(([lat, lng]) => toLocal(lat, lng));
-  const minU = Math.floor(Math.min(...localBoundary.map(({ u }) => u)) / 10) * 10;
-  const maxU = Math.ceil(Math.max(...localBoundary.map(({ u }) => u)) / 10) * 10;
-  const minV = Math.floor(Math.min(...localBoundary.map(({ v }) => v)) / 10) * 10;
-  const maxV = Math.ceil(Math.max(...localBoundary.map(({ v }) => v)) / 10) * 10;
+  const alongLength = pathLength(landEdge);
+  const alongSections = Math.ceil(alongLength / 10);
   let count = 0;
-  for (let row = 0, v = minV; v < maxV; row++, v += 10) {
-    for (let column = 0, u = minU; u < maxU; column++, u += 10) {
-      const clipped = clippedBeachCell(u, v, 10);
-      if (clipped.length < 3) continue;
+  for (let column = 0; column < alongSections; column++) {
+    const startFraction = column / alongSections;
+    const endFraction = (column + 1) / alongSections;
+    const landStart = pointAlong(landEdge, startFraction), seaStart = pointAlong(seaEdge, startFraction);
+    const landEnd = pointAlong(landEdge, endFraction), seaEnd = pointAlong(seaEdge, endFraction);
+    const acrossSections = Math.max(1, Math.ceil(Math.max(distance(landStart, seaStart), distance(landEnd, seaEnd)) / 10));
+    for (let row = 0; row < acrossSections; row++) {
+      const startRatio = row / acrossSections, endRatio = (row + 1) / acrossSections;
+      const localPath = [
+        pointBetween(landStart, seaStart, startRatio), pointBetween(landEnd, seaEnd, startRatio),
+        pointBetween(landEnd, seaEnd, endRatio), pointBetween(landStart, seaStart, endRatio)
+      ];
       const address = `${column + 1}-${letterLabel(row)}`;
       const polygon = new window.kakao.maps.Polygon({
         map,
-        path: clipped.map(({ u, v }) => { const { lat, lng } = toLatLng(u, v); return new window.kakao.maps.LatLng(lat, lng); }),
+        path: localPath.map(({ u, v }) => { const { lat, lng } = toLatLng(u, v); return new window.kakao.maps.LatLng(lat, lng); }),
         strokeWeight: 1, strokeColor: "#237a8b", strokeOpacity: 0.72, fillColor: "#70d1d2", fillOpacity: 0.08
       });
       window.kakao.maps.event.addListener(polygon, "click", () => selectGeoCell(address, polygon));
-      geoGrid.set(address, { polygon, u, v });
+      geoGrid.set(address, { polygon, localPath });
       count++;
     }
   }
-  setNotice(`실제 해안선 경계 안에 ${count.toLocaleString()}개의 10m 격자를 만들었어요. 격자를 눌러 주소를 선택하세요.`);
+  setNotice(`해안선 굴곡을 따라 ${count.toLocaleString()}개의 약 10m 격자를 만들었어요. 격자를 눌러 주소를 선택하세요.`);
 }
 
 function renderGrid() {
