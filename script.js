@@ -1,4 +1,10 @@
 const HAEUNDAE = { lat: 35.1587, lng: 129.1604 };
+const BEACHES = {
+  haeundae: { name: "해운대해수욕장", lat: 35.1587, lng: 129.1604, gridReady: true },
+  gwangalli: { name: "광안리해수욕장", lat: 35.1532, lng: 129.1186, gridReady: false },
+  songjeong: { name: "송정해수욕장", lat: 35.1785, lng: 129.2016, gridReady: false },
+  songdo: { name: "송도해수욕장", lat: 35.0767, lng: 129.0178, gridReady: false }
+};
 const rows = ["A", "B", "C", "D", "E", "F", "G"];
 const columns = Array.from({ length: 12 }, (_, i) => i + 1);
 // Approximate sand-area boundary: cells outside the curved beach edge are omitted.
@@ -277,6 +283,23 @@ function setGuideVisible(visible) {
   document.querySelector("#guideModal").hidden = !visible;
   if (!visible) localStorage.setItem("haeundae-beach-guide-intro-seen", "true");
 }
+function changeBeach(event) {
+  const beach = BEACHES[event.target.value];
+  if (!kakaoMap || !beach) return;
+  kakaoMap.setCenter(new window.kakao.maps.LatLng(beach.lat, beach.lng));
+  kakaoMap.setLevel(beach.gridReady ? 4 : 5);
+  if (beach.gridReady) {
+    renderGeographicGrid(kakaoMap);
+    renderFacilities();
+    setNotice(`${beach.name}의 10m 구역 주소와 안전 정보를 확인할 수 있어요.`);
+  } else {
+    geoGrid.forEach(({ polygon }) => polygon.setMap(null));
+    geoGrid.clear();
+    facilityMarkers.forEach((marker) => marker.setMap(null));
+    if (deckLine) deckLine.setMap(null);
+    setNotice(`${beach.name} 지도 탐색을 열었어요. 10m 구역 주소와 시설 정보는 현장 좌표 검증 후 제공합니다.`);
+  }
+}
 async function shareMeeting() {
   const message = `해운대해수욕장 만남 위치: ${addressText()}\n${location.href}`;
   const result = document.querySelector("#shareResult");
@@ -325,6 +348,7 @@ document.querySelector("#locateMe").addEventListener("click", locateMe);
 document.querySelector("#startGuide").addEventListener("click", () => setGuideVisible(false));
 document.querySelector("#openGuide").addEventListener("click", () => setGuideVisible(true));
 document.querySelector("#shareMeeting").addEventListener("click", shareMeeting);
+document.querySelector("#beachSelect").addEventListener("change", changeBeach);
 document.querySelector("#toggleFacilities").addEventListener("click", (event) => { facilitiesVisible = !facilitiesVisible; event.currentTarget.classList.toggle("active", facilitiesVisible); event.currentTarget.innerHTML = `${facilitiesVisible ? "지도에서 시설 숨기기" : "지도에서 시설 보기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#toggleDeck").addEventListener("click", (event) => { deckVisible = !deckVisible; event.currentTarget.classList.toggle("active", deckVisible); event.currentTarget.innerHTML = `${deckVisible ? "데크길 숨기기" : "데크길 표시하기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
