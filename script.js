@@ -36,8 +36,8 @@ function renderGrid() {
 function renderFacilities() {
   const layer = document.querySelector("#facilityLayer");
   layer.innerHTML = "";
-  if (!facilitiesVisible) return;
   if (deckVisible) { const deck = document.createElement("div"); deck.className = "deck-path"; layer.appendChild(deck); }
+  if (!facilitiesVisible) return;
   facilities.forEach((facility) => {
     const button = document.createElement("button");
     button.type = "button"; button.className = "facility";

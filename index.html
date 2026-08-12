@@ -8,6 +8,13 @@
   <link rel="stylesheet" href="style.css" />
   <!-- 카카오디벨로퍼스에서 발급한 JavaScript 키로 YOUR_KAKAO_JAVASCRIPT_KEY를 바꾸세요. -->
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e48e261f5285b8768f8276297459a06b&autoload=false"></script>
+  <style>
+    #kakaoMap { position:absolute !important; inset:0 !important; z-index:0 !important; pointer-events:none !important; }
+    #kakaoMap * { pointer-events:none !important; }
+    #beachGrid { z-index:50 !important; pointer-events:auto !important; }
+    #facilityLayer { z-index:51 !important; pointer-events:none !important; }
+    #facilityLayer .facility { pointer-events:auto !important; }
+  </style>
 </head>
 <body>
   <main class="app-shell">
