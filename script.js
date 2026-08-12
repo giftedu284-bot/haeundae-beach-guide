@@ -27,6 +27,13 @@ let selected = "6-D";
 let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
 let facilitiesVisible = true;
 let deckVisible = false;
+const geoFacilities = [
+  { title: "휠체어 경사로 (시범 위치)", lat: 35.15828, lng: 129.15850 },
+  { title: "장애인 화장실 (시범 위치)", lat: 35.15775, lng: 129.16230 },
+  { title: "접근 가능한 출입구 (시범 위치)", lat: 35.15873, lng: 129.16820 }
+];
+let facilityMarkers = [];
+let deckLine;
 
 const facilities = [
   { icon: "♿", name: "휠체어 경사로", detail: "관광안내소 앞", x: "18%", y: "35%" },
@@ -140,7 +147,7 @@ function renderGrid() {
   }));
 }
 
-function renderFacilities() {
+function renderStaticFacilities() {
   const layer = document.querySelector("#facilityLayer");
   layer.innerHTML = "";
   if (deckVisible) { const deck = document.createElement("div"); deck.className = "deck-path"; layer.appendChild(deck); }
@@ -152,6 +159,28 @@ function renderFacilities() {
     button.innerHTML = `<span>${facility.icon}</span><i>${facility.name}</i>`;
     button.addEventListener("click", () => setNotice(`${facility.name}: ${facility.detail}`));
     layer.appendChild(button);
+  });
+}
+
+function renderFacilities() {
+  const layer = document.querySelector("#facilityLayer");
+  layer.innerHTML = "";
+  if (!kakaoMap) return;
+  facilityMarkers.forEach((marker) => marker.setMap(null));
+  facilityMarkers = [];
+  if (deckLine) { deckLine.setMap(null); deckLine = null; }
+  if (deckVisible) {
+    deckLine = new window.kakao.maps.Polyline({
+      map: kakaoMap,
+      path: [[35.15924,129.16223],[35.15950,129.16349],[35.15964,129.16472],[35.15956,129.16794],[35.15929,129.16962]].map(([lat,lng]) => new window.kakao.maps.LatLng(lat,lng)),
+      strokeWeight: 7, strokeColor: "#76522a", strokeOpacity: 0.85, strokeStyle: "shortdash"
+    });
+  }
+  if (!facilitiesVisible) return;
+  geoFacilities.forEach((facility) => {
+    const marker = new window.kakao.maps.Marker({ map: kakaoMap, position: new window.kakao.maps.LatLng(facility.lat, facility.lng), title: facility.title });
+    window.kakao.maps.event.addListener(marker, "click", () => setNotice(`${facility.title}를 선택했어요. 실제 운영 정보는 현장 확인 후 등록합니다.`));
+    facilityMarkers.push(marker);
   });
 }
 
@@ -190,6 +219,7 @@ function initKakaoMap() {
     map.setBounds(bounds);
     new window.kakao.maps.Polygon({ map, path: beachBoundary.map(([lat, lng]) => new window.kakao.maps.LatLng(lat, lng)), strokeWeight: 3, strokeColor: "#0e7088", strokeOpacity: 0.9, fillColor: "#80d8d4", fillOpacity: 0.13 });
     renderGeographicGrid(map);
+    renderFacilities();
     document.querySelector("#mapFallback").style.display = "none";
   });
 }
