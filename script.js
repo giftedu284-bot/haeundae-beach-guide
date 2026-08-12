@@ -48,6 +48,7 @@ let deckVisible = false;
 const geoFacilities = [];
 let facilityMarkers = [];
 let deckLine;
+let currentBeachKey = "haeundae";
 
 const facilities = [
   { icon: "♿", name: "휠체어 경사로", detail: "관광안내소 앞", x: "18%", y: "35%" },
@@ -282,6 +283,32 @@ function updateAddress() {
   document.querySelector("#reportAddress").textContent = addressText();
 }
 function setNotice(message) { document.querySelector("#mapNotice").textContent = message; }
+function weatherInfo(code) {
+  const values = { 0:["☀️","맑음"], 1:["🌤️","대체로 맑음"], 2:["⛅","구름 조금"], 3:["☁️","흐림"], 45:["🌫️","안개"], 48:["🌫️","안개"], 51:["🌦️","이슬비"], 53:["🌦️","이슬비"], 55:["🌦️","강한 이슬비"], 61:["🌧️","비"], 63:["🌧️","비"], 65:["🌧️","강한 비"], 71:["🌨️","눈"], 73:["🌨️","눈"], 75:["🌨️","강한 눈"], 80:["🌦️","소나기"], 81:["🌧️","소나기"], 82:["⛈️","강한 소나기"], 95:["⛈️","뇌우"], 96:["⛈️","우박 동반 뇌우"], 99:["⛈️","강한 뇌우"] };
+  return values[code] || ["🌡️", "날씨 상태 확인"];
+}
+async function loadWeather() {
+  const beach = BEACHES[currentBeachKey] || BEACHES.haeundae;
+  const $ = (selector) => document.querySelector(selector);
+  $("#weatherBeach").textContent = `${beach.name} 오늘의 날씨`;
+  $("#weatherIcon").textContent = "…"; $("#weatherTemp").textContent = "불러오는 중…"; $("#weatherDesc").textContent = "현재 조건을 확인하고 있어요.";
+  $("#weatherRain").textContent = "–"; $("#weatherWind").textContent = "–"; $("#weatherUpdated").textContent = "";
+  try {
+    const params = new URLSearchParams({ latitude: beach.lat, longitude: beach.lng, current: "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m", timezone: "Asia/Seoul" });
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+    if (!response.ok) throw new Error("weather request failed");
+    const data = await response.json(); const current = data.current;
+    if (!current) throw new Error("weather payload missing");
+    const [emoji, label] = weatherInfo(current.weather_code);
+    $("#weatherIcon").textContent = emoji; $("#weatherTemp").textContent = `${Math.round(current.temperature_2m)}°C`;
+    $("#weatherDesc").textContent = `${label} · 체감 ${Math.round(current.apparent_temperature)}°C`;
+    $("#weatherRain").textContent = `${current.precipitation} mm`; $("#weatherWind").textContent = `${Math.round(current.wind_speed_10m)} km/h`;
+    $("#weatherUpdated").textContent = `기준 시각 ${current.time.replace("T", " ")} · 자동 갱신`;
+  } catch (error) {
+    $("#weatherIcon").textContent = "⚠️"; $("#weatherTemp").textContent = "날씨 확인 필요"; $("#weatherDesc").textContent = "날씨 정보를 불러오지 못했어요.";
+    $("#weatherUpdated").textContent = "네트워크를 확인한 뒤 다시 열어 주세요.";
+  }
+}
 function setGuideVisible(visible) {
   document.querySelector("#guideModal").hidden = !visible;
   if (!visible) localStorage.setItem("haeundae-beach-guide-intro-seen", "true");
@@ -289,6 +316,8 @@ function setGuideVisible(visible) {
 function changeBeach(event) {
   const beach = BEACHES[event.target.value];
   if (!kakaoMap || !beach) return;
+  currentBeachKey = event.target.value;
+  loadWeather();
   kakaoMap.setCenter(new window.kakao.maps.LatLng(beach.lat, beach.lng));
   kakaoMap.setLevel(beach.gridReady ? 4 : 5);
   if (beach.gridReady) {
@@ -342,6 +371,7 @@ function initKakaoMap() {
     new window.kakao.maps.Polygon({ map, path: beachBoundary.map(([lat, lng]) => new window.kakao.maps.LatLng(lat, lng)), strokeWeight: 3, strokeColor: "#0e7088", strokeOpacity: 0.9, fillColor: "#80d8d4", fillOpacity: 0.13 });
     renderGeographicGrid(map);
     renderFacilities();
+    loadWeather();
     document.querySelector("#mapFallback").style.display = "none";
   });
 }
@@ -356,4 +386,4 @@ document.querySelector("#toggleFacilities").addEventListener("click", (event) =>
 document.querySelector("#toggleDeck").addEventListener("click", (event) => { deckVisible = !deckVisible; event.currentTarget.classList.toggle("active", deckVisible); event.currentTarget.innerHTML = `${deckVisible ? "데크길 숨기기" : "데크길 표시하기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
 if (localStorage.getItem("haeundae-beach-guide-intro-seen")) setGuideVisible(false);
-renderGrid(); renderFacilities(); updateAddress(); initKakaoMap();
+renderGrid(); renderFacilities(); updateAddress(); loadWeather(); initKakaoMap();
