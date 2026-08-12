@@ -64,40 +64,41 @@ function isInsideBeach(lat, lng) {
   }
   return inside;
 }
-function clipByLatitude(points, limit, keepAbove) {
+// Work in a local metre-based coordinate system rotated to match Haeundae's shoreline.
+const gridOrigin = { lat: 35.1577, lng: 129.1618 };
+const shoreAngle = 14 * Math.PI / 180;
+const metresPerLat = 111320;
+const metresPerLng = 111320 * Math.cos(gridOrigin.lat * Math.PI / 180);
+function toLocal(lat, lng) {
+  const east = (lng - gridOrigin.lng) * metresPerLng;
+  const north = (lat - gridOrigin.lat) * metresPerLat;
+  return { u: east * Math.cos(shoreAngle) + north * Math.sin(shoreAngle), v: -east * Math.sin(shoreAngle) + north * Math.cos(shoreAngle) };
+}
+function toLatLng(u, v) {
+  const east = u * Math.cos(shoreAngle) - v * Math.sin(shoreAngle);
+  const north = u * Math.sin(shoreAngle) + v * Math.cos(shoreAngle);
+  return { lat: gridOrigin.lat + north / metresPerLat, lng: gridOrigin.lng + east / metresPerLng };
+}
+function clipByAxis(points, axis, limit, keepGreater) {
   const output = [];
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
     const a = points[j], b = points[i];
-    const aInside = keepAbove ? a.lat >= limit : a.lat <= limit;
-    const bInside = keepAbove ? b.lat >= limit : b.lat <= limit;
+    const aInside = keepGreater ? a[axis] >= limit : a[axis] <= limit;
+    const bInside = keepGreater ? b[axis] >= limit : b[axis] <= limit;
     if (aInside !== bInside) {
-      const t = (limit - a.lat) / (b.lat - a.lat);
-      output.push({ lat: limit, lng: a.lng + t * (b.lng - a.lng) });
+      const t = (limit - a[axis]) / (b[axis] - a[axis]);
+      output.push({ u: a.u + t * (b.u - a.u), v: a.v + t * (b.v - a.v) });
     }
     if (bInside) output.push(b);
   }
   return output;
 }
-function clipByLongitude(points, limit, keepRight) {
-  const output = [];
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const a = points[j], b = points[i];
-    const aInside = keepRight ? a.lng >= limit : a.lng <= limit;
-    const bInside = keepRight ? b.lng >= limit : b.lng <= limit;
-    if (aInside !== bInside) {
-      const t = (limit - a.lng) / (b.lng - a.lng);
-      output.push({ lat: a.lat + t * (b.lat - a.lat), lng: limit });
-    }
-    if (bInside) output.push(b);
-  }
-  return output;
-}
-function clippedBeachCell(lat, lng, latStep, lngStep) {
-  let points = beachBoundary.map(([pointLat, pointLng]) => ({ lat: pointLat, lng: pointLng }));
-  points = clipByLatitude(points, lat, true);
-  points = clipByLatitude(points, lat + latStep, false);
-  points = clipByLongitude(points, lng, true);
-  return clipByLongitude(points, lng + lngStep, false);
+function clippedBeachCell(u, v, size) {
+  let points = beachBoundary.map(([lat, lng]) => toLocal(lat, lng));
+  points = clipByAxis(points, "u", u, true);
+  points = clipByAxis(points, "u", u + size, false);
+  points = clipByAxis(points, "v", v, true);
+  return clipByAxis(points, "v", v + size, false);
 }
 function selectGeoCell(address, polygon) {
   if (selectedGeoCell) selectedGeoCell.setOptions({ fillOpacity: 0.08, strokeColor: "#237a8b" });
@@ -107,8 +108,9 @@ function selectGeoCell(address, polygon) {
 }
 function findGeoCell(lat, lng) {
   if (!isInsideBeach(lat, lng)) return null;
+  const point = toLocal(lat, lng);
   for (const [address, cell] of geoGrid) {
-    if (lat >= cell.lat && lat < cell.lat + cell.latStep && lng >= cell.lng && lng < cell.lng + cell.lngStep) return { address, cell };
+    if (point.u >= cell.u && point.u < cell.u + 10 && point.v >= cell.v && point.v < cell.v + 10) return { address, cell };
   }
   return null;
 }
@@ -139,25 +141,24 @@ function locateMe() {
   );
 }
 function renderGeographicGrid(map) {
-  const latitudes = beachBoundary.map(([lat]) => lat);
-  const longitudes = beachBoundary.map(([, lng]) => lng);
-  const minLat = Math.min(...latitudes), maxLat = Math.max(...latitudes);
-  const minLng = Math.min(...longitudes), maxLng = Math.max(...longitudes);
-  const latStep = 10 / 111320;
-  const lngStep = 10 / (111320 * Math.cos(((minLat + maxLat) / 2) * Math.PI / 180));
+  const localBoundary = beachBoundary.map(([lat, lng]) => toLocal(lat, lng));
+  const minU = Math.floor(Math.min(...localBoundary.map(({ u }) => u)) / 10) * 10;
+  const maxU = Math.ceil(Math.max(...localBoundary.map(({ u }) => u)) / 10) * 10;
+  const minV = Math.floor(Math.min(...localBoundary.map(({ v }) => v)) / 10) * 10;
+  const maxV = Math.ceil(Math.max(...localBoundary.map(({ v }) => v)) / 10) * 10;
   let count = 0;
-  for (let row = 0, lat = minLat; lat < maxLat; row++, lat += latStep) {
-    for (let column = 0, lng = minLng; lng < maxLng; column++, lng += lngStep) {
-      const clipped = clippedBeachCell(lat, lng, latStep, lngStep);
+  for (let row = 0, v = minV; v < maxV; row++, v += 10) {
+    for (let column = 0, u = minU; u < maxU; column++, u += 10) {
+      const clipped = clippedBeachCell(u, v, 10);
       if (clipped.length < 3) continue;
       const address = `${column + 1}-${letterLabel(row)}`;
       const polygon = new window.kakao.maps.Polygon({
         map,
-        path: clipped.map(({ lat: y, lng: x }) => new window.kakao.maps.LatLng(y, x)),
+        path: clipped.map(({ u, v }) => { const { lat, lng } = toLatLng(u, v); return new window.kakao.maps.LatLng(lat, lng); }),
         strokeWeight: 1, strokeColor: "#237a8b", strokeOpacity: 0.72, fillColor: "#70d1d2", fillOpacity: 0.08
       });
       window.kakao.maps.event.addListener(polygon, "click", () => selectGeoCell(address, polygon));
-      geoGrid.set(address, { polygon, lat, lng, latStep, lngStep });
+      geoGrid.set(address, { polygon, u, v });
       count++;
     }
   }
