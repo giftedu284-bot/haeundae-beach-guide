@@ -164,9 +164,9 @@ function renderGeographicGrid(map) {
     const seaEnd = pointAlong(seaEdge, (column + 1) * 10);
     const acrossSections = Math.max(1, Math.round((distance(landStart, seaStart) + distance(landEnd, seaEnd)) / 20));
     for (let row = 0; row < acrossSections; row++) {
-      // M is the current seaward limit for this prototype. Do not create N+
+      // L is the current seaward limit for this prototype. Do not create M+
       // rows until the official managed beach area has been verified.
-      if (row >= 13) continue;
+      if (row >= 12) continue;
       const startRatio = row / acrossSections, endRatio = (row + 1) / acrossSections;
       const localPath = [
         pointBetween(landStart, seaStart, startRatio), pointBetween(landEnd, seaEnd, startRatio),
