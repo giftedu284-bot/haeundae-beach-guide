@@ -47,7 +47,12 @@
       <section class="card location-card"><div class="card-icon">◎</div><div><span>내가 선택한 장소</span><h3 id="panelAddress">6-D 구역 <small>· 10m × 10m</small></h3><p>해운대해수욕장 모래사장</p></div></section>
       <section class="card"><div class="card-title"><div class="card-icon">⌾</div><div><h3>내 현재 위치</h3><p>GPS로 현재 위치의 해변 주소를 찾아요.</p></div></div><button id="locateMe" class="wide-button active" type="button">내 위치로 격자 찾기 <span>⌖</span></button></section>
       <section class="card"><div class="card-title"><div class="card-icon">♿</div><div><h3>장애인 접근성</h3><p>시설 좌표는 현장 검증 후 제공합니다.</p></div></div><button id="toggleFacilities" class="wide-button" type="button" disabled>검증된 시설 좌표 준비 중 <span>›</span></button><button id="toggleDeck" class="wide-button" type="button">데크길 표시하기 <span>›</span></button></section>
-      <form id="reportForm" class="report-card">
+      <section class="emergency-card">
+        <p class="tag">EMERGENCY FIRST</p><h3>긴급 상황은 112 · 119</h3>
+        <p>이 앱은 신고를 접수하지 않습니다. 경찰·소방 또는 현장 안전요원에게 먼저 연락한 뒤, 선택한 구역 위치를 공유하세요.</p>
+        <div><a href="tel:112">112 경찰 신고</a><a href="tel:119">119 구조 요청</a></div>
+      </section>
+      <form id="reportForm" class="report-card" hidden>
         <div class="report-title"><span>긴급</span><div><h3>실종 아동 마지막 위치 신고</h3><p>선택한 격자를 중심으로 수색 범위를 좁혀요.</p></div></div>
         <label>아동 이름<input id="childName" required placeholder="예: 김해운" /></label>
         <label>옷차림 또는 특징<input id="childDescription" required placeholder="예: 노란 티셔츠, 파란 모자" /></label>

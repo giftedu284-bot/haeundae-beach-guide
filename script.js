@@ -40,6 +40,8 @@ const storageKey = "haeundae-beach-guide-reports";
 // from the promenade toward the sea, while columns 1/2/3 run west to east.
 let selected = "D6";
 let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
+// The former on-device report prototype is retired. Clear only its own data.
+if (reports.length) { reports = []; localStorage.removeItem(storageKey); }
 let facilitiesVisible = false;
 let deckVisible = false;
 // Deliberately empty: only verified, on-land facility coordinates may be shown.
