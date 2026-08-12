@@ -20,6 +20,8 @@ const beachBoundary = [
 ];
 const geoGrid = new Map();
 let selectedGeoCell;
+let kakaoMap;
+let myLocationMarker;
 const storageKey = "haeundae-beach-guide-reports";
 let selected = "6-D";
 let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
@@ -61,6 +63,38 @@ function selectGeoCell(address, polygon) {
   selectedGeoCell.setOptions({ fillOpacity: 0.52, fillColor: "#f6b73c", strokeColor: "#d76b00" });
   selectAddress(address);
 }
+function findGeoCell(lat, lng) {
+  for (const [address, cell] of geoGrid) {
+    if (lat >= cell.lat && lat < cell.lat + cell.latStep && lng >= cell.lng && lng < cell.lng + cell.lngStep) return { address, cell };
+  }
+  return null;
+}
+function locateMe() {
+  const button = document.querySelector("#locateMe");
+  if (!navigator.geolocation) { setNotice("이 기기에서는 GPS 위치 기능을 사용할 수 없어요."); return; }
+  button.disabled = true;
+  button.textContent = "현재 위치를 확인하고 있어요…";
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
+      const { latitude: lat, longitude: lng, accuracy } = coords;
+      const position = new window.kakao.maps.LatLng(lat, lng);
+      if (myLocationMarker) myLocationMarker.setMap(null);
+      myLocationMarker = new window.kakao.maps.Marker({ map: kakaoMap, position, title: "내 현재 위치" });
+      kakaoMap.panTo(position);
+      const match = findGeoCell(lat, lng);
+      if (match) {
+        selectGeoCell(match.address, match.cell.polygon);
+        setNotice(`내 위치는 ${match.address} 구역이에요. GPS 정확도는 약 ${Math.round(accuracy)}m예요.`);
+      } else {
+        setNotice(`현재 위치는 해변 격자 범위 밖이에요. GPS 정확도는 약 ${Math.round(accuracy)}m예요.`);
+      }
+      button.disabled = false;
+      button.innerHTML = "내 위치로 격자 찾기 <span>⌖</span>";
+    },
+    () => { button.disabled = false; button.innerHTML = "내 위치로 격자 찾기 <span>⌖</span>"; setNotice("위치 권한이 필요해요. 브라우저에서 위치 사용을 허용해 주세요."); },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
 function renderGeographicGrid(map) {
   const latitudes = beachBoundary.map(([lat]) => lat);
   const longitudes = beachBoundary.map(([, lng]) => lng);
@@ -80,7 +114,7 @@ function renderGeographicGrid(map) {
         strokeWeight: 1, strokeColor: "#237a8b", strokeOpacity: 0.72, fillColor: "#70d1d2", fillOpacity: 0.08
       });
       window.kakao.maps.event.addListener(polygon, "click", () => selectGeoCell(address, polygon));
-      geoGrid.set(address, polygon);
+      geoGrid.set(address, { polygon, lat, lng, latStep, lngStep });
       count++;
     }
   }
@@ -150,6 +184,7 @@ function initKakaoMap() {
     const mapElement = document.querySelector("#kakaoMap");
     Object.assign(mapElement.style, { position: "absolute", inset: "0", zIndex: "0", pointerEvents: "none" });
     const map = new window.kakao.maps.Map(mapElement, { center: new window.kakao.maps.LatLng(HAEUNDAE.lat, HAEUNDAE.lng), level: 4 });
+    kakaoMap = map;
     const bounds = new window.kakao.maps.LatLngBounds();
     beachBoundary.forEach(([lat, lng]) => bounds.extend(new window.kakao.maps.LatLng(lat, lng)));
     map.setBounds(bounds);
@@ -160,6 +195,7 @@ function initKakaoMap() {
 }
 
 document.querySelector("#reportForm").addEventListener("submit", registerReport);
+document.querySelector("#locateMe").addEventListener("click", locateMe);
 document.querySelector("#toggleFacilities").addEventListener("click", (event) => { facilitiesVisible = !facilitiesVisible; event.currentTarget.classList.toggle("active", facilitiesVisible); event.currentTarget.innerHTML = `${facilitiesVisible ? "지도에서 시설 숨기기" : "지도에서 시설 보기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#toggleDeck").addEventListener("click", (event) => { deckVisible = !deckVisible; event.currentTarget.classList.toggle("active", deckVisible); event.currentTarget.innerHTML = `${deckVisible ? "데크길 숨기기" : "데크길 표시하기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
