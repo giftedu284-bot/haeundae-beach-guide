@@ -1,40 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>해운대 스마트 백사장 안전 지도</title>
-  <!-- 여기에 카카오 발급 JavaScript 키를 입력하세요: 아래 YOUR_KAKAO_APP_KEY를 교체하세요 -->
-  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_APP_KEY&autoload=false"></script>
-  <style>
-    :root{--navy:#12304a;--blue:#1976d2;--danger:#e53935}*{box-sizing:border-box}body{margin:0;background:#eef4f8;color:#1d2c3a;font-family:Arial,"Noto Sans KR",sans-serif}.dashboard{display:grid;grid-template-columns:minmax(0,1fr) 370px;min-height:100vh}.map-area{position:relative;min-height:100vh}#map{width:100%;height:100%;min-height:100vh}.map-title{position:absolute;z-index:10;top:18px;left:18px;padding:13px 16px;border-radius:12px;color:#fff;background:#12304aeb;box-shadow:0 4px 18px #0003}.map-title strong{display:block;font-size:16px}.map-title span{display:block;margin-top:4px;font-size:12px;opacity:.85}.legend{position:absolute;z-index:10;bottom:94px;left:18px;display:flex;gap:14px;padding:10px 13px;border-radius:9px;font-size:12px;background:#fffffff0;box-shadow:0 2px 12px #0002}.legend-item{display:flex;align-items:center;gap:6px}.legend-box{width:14px;height:14px;border:1px solid #9f7c42;background:#f3ddb180}.legend-box.danger{border-color:#c62828;background:#e5393573}.dynamic-info{position:absolute;z-index:10;right:18px;bottom:18px;left:18px;padding:14px 18px;border-left:5px solid var(--blue);border-radius:10px;background:#fffffff5;box-shadow:0 4px 16px #0003}.address{font-weight:800;color:var(--navy)}.guide{margin-top:5px;font-size:13px;color:#536675}.control-panel{overflow-y:auto;padding:24px;background:#fff;box-shadow:-3px 0 18px #0f2d461f}.control-panel h1{margin:0 0 8px;font-size:23px;color:var(--navy)}.subtitle{margin:0 0 22px;font-size:13px;line-height:1.55;color:#667887}.card{margin-bottom:16px;padding:16px;border:1px solid #dce7ef;border-radius:12px;background:#fbfdff}.card h2{margin:0 0 10px;font-size:15px;color:var(--navy)}.selected-address{padding:12px;border-radius:8px;font-size:13px;font-weight:700;color:#075ca8;background:#e8f4ff}.guide-text{margin:10px 0 0;font-size:13px;line-height:1.55;color:#5b6d79}button{width:100%;padding:12px;border:0;border-radius:8px;cursor:pointer;font-size:14px;font-weight:800;transition:.2s}button:hover{filter:brightness(.94)}.accessibility-button{color:#fff;background:#1677c8}.accessibility-button.active{background:#078653}label{display:block;margin:11px 0 5px;font-size:12px;font-weight:700;color:#4f6270}input{width:100%;padding:10px;border:1px solid #cbdbe6;border-radius:7px;outline:none;font:inherit;font-size:13px}input:focus{border-color:var(--blue);box-shadow:0 0 0 3px #1976d21f}input[readonly]{color:#587080;background:#f2f6f8}.report-button{margin-top:14px;color:#fff;background:var(--danger)}.status{min-height:20px;margin:10px 0 0;font-size:12px;line-height:1.45;color:#687a87}.overlay-label{padding:3px 5px;border-radius:4px;color:#57401f;font-size:10px;font-weight:800;background:#ffffffbd;pointer-events:none}.facility-pin,.alert-pin{display:flex;align-items:center;justify-content:center;border:2px solid #fff;border-radius:50%;color:#fff;box-shadow:0 2px 7px #0004}.facility-pin{width:38px;height:38px;background:#1677c8;font-size:20px}.alert-pin{width:45px;height:45px;border:3px solid #fff;background:#e53935;font-size:22px;animation:blink 1s infinite}@keyframes blink{50%{opacity:.52;transform:scale(1.18)}}@media(max-width:850px){.dashboard{grid-template-columns:1fr}.map-area,#map{min-height:65vh}.control-panel{min-height:35vh}.legend{display:none}}
-  </style>
+  <meta name="description" content="해운대해수욕장 안전·접근성 지도" />
+  <title>해변가이드 | 해운대 안전 지도</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- 카카오디벨로퍼스에서 발급한 JavaScript 키로 YOUR_KAKAO_JAVASCRIPT_KEY를 바꾸세요. -->
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e48e261f5285b8768f8276297459a06b&autoload=false"></script>
 </head>
 <body>
-  <main class="dashboard">
-    <section class="map-area">
-      <div id="map"></div>
-      <div class="map-title"><strong>해운대 스마트 백사장 안전 지도</strong><span>격자 주소 기반 위치 안내 · 안전 지원 시스템</span></div>
-      <div class="legend"><div class="legend-item"><span class="legend-box"></span>일반 격자</div><div class="legend-item"><span class="legend-box danger"></span>수색 협조 구역</div></div>
-      <div class="dynamic-info" id="dynamicInfo"><div class="address">현재 선택된 격자 주소: 선택 전</div><div class="guide">백사장 격자를 선택하면 모호한 위치 설명 대신 정확한 구역 주소를 확인할 수 있습니다.</div></div>
+  <main class="app-shell">
+    <section class="map-section">
+      <header class="brand"><span class="brand-mark">⌁</span><div><b>해변가이드</b><small>HAEUNDAE BEACH GUIDE</small></div></header>
+      <div class="map-heading"><p class="tag">10M × 10M GRID ADDRESS</p><h1>해운대를 더 가깝고<br>안전하게</h1><p>모래사장 위의 내 위치를<br>정확한 주소로 만나요.</p></div>
+      <div id="map" class="beach-map" aria-label="해운대해수욕장 지도">
+        <div class="map-fallback" id="mapFallback"><b>해운대해수욕장</b><span>카카오맵 JavaScript 키를 넣으면 실제 지도가 표시됩니다.</span></div>
+        <div id="beachGrid" class="grid-wrap" role="grid" aria-label="해운대 10미터 격자"></div>
+        <div id="facilityLayer" class="facility-layer" aria-label="접근성 시설"></div>
+        <div class="legend"><span><i class="sand"></i>10m 격자</span><span><i class="alert-dot"></i>수색 알림</span><span><i class="blue-dot"></i>접근성 시설</span></div>
+      </div>
+      <div class="map-status"><div><span>현재 선택한 위치</span><strong id="selectedAddress">6-D <em>구역</em></strong></div><p id="mapNotice">격자를 선택하면 약속 장소나 마지막 목격 위치를 정확하게 공유할 수 있어요.</p><button id="copyAddress" type="button">주소 복사</button></div>
     </section>
-    <aside class="control-panel">
-      <h1>안전 기능 패널</h1><p class="subtitle">해운대 백사장을 20 × 7 가상 격자로 구분하여 위치 안내와 신속한 안전 대응을 지원합니다.</p>
-      <section class="card"><h2>선택 구역</h2><div class="selected-address" id="panelAddress">현재 선택된 격자 주소: 선택 전</div><p class="guide-text">격자 주소를 활용하면 모호한 위치 설명 없이 정확한 위치를 빠르게 공유할 수 있습니다.</p></section>
-      <section class="card"><h2>장애인 접근성</h2><button id="accessibilityToggle" class="accessibility-button" type="button">♿ 장애인 시설 표시</button><p class="guide-text">휠체어 경사로, 장애인 화장실, 접근 가능한 출입구 위치를 표시합니다.</p></section>
-      <section class="card"><h2>실종 아동 마지막 위치 신고</h2><label for="childName">아동 이름</label><input id="childName" placeholder="예: 김해운"><label for="childClothes">의상 / 특징</label><input id="childClothes" placeholder="예: 노란 티셔츠, 파란 모자"><label for="reportGrid">마지막 목격 격자</label><input id="reportGrid" readonly placeholder="지도에서 격자를 선택하세요"><button id="reportButton" class="report-button" type="button">🚨 마지막 위치 등록</button><p class="status" id="reportStatus">신고 전 지도에서 마지막 목격 구역을 먼저 선택해 주세요.</p></section>
+    <aside class="panel">
+      <div class="panel-head"><p class="tag">BEACH SAFETY MAP</p><h2>오늘의 해변 안내</h2><p>필요한 정보를 지도 위에서 바로 확인하세요.</p></div>
+      <section class="card location-card"><div class="card-icon">◎</div><div><span>내가 선택한 장소</span><h3 id="panelAddress">6-D 구역 <small>· 10m × 10m</small></h3><p>해운대해수욕장 모래사장</p></div></section>
+      <section class="card"><div class="card-title"><div class="card-icon">♿</div><div><h3>장애인 접근성</h3><p>이동에 필요한 시설을 찾아보세요.</p></div></div><button id="toggleFacilities" class="wide-button active" type="button">지도에서 시설 숨기기 <span>›</span></button><button id="toggleDeck" class="wide-button" type="button">데크길 표시하기 <span>›</span></button></section>
+      <form id="reportForm" class="report-card">
+        <div class="report-title"><span>긴급</span><div><h3>실종 아동 마지막 위치 신고</h3><p>선택한 격자를 중심으로 수색 범위를 좁혀요.</p></div></div>
+        <label>아동 이름<input id="childName" required placeholder="예: 김해운" /></label>
+        <label>옷차림 또는 특징<input id="childDescription" required placeholder="예: 노란 티셔츠, 파란 모자" /></label>
+        <div class="report-location"><span>마지막 목격 위치</span><b id="reportAddress">6-D 구역</b></div>
+        <button class="report-button" type="submit">수색 알림 등록하기</button>
+        <small>긴급 상황에서는 112 또는 해변 안전요원에게 먼저 알려주세요.</small>
+      </form>
+      <div class="tips"><span>안전 이용 팁</span><p>만남 장소는 “6-D 구역”처럼 격자 주소로 약속해 보세요.</p></div>
     </aside>
   </main>
-  <script>
-    const STORAGE_KEY="haeundaeMissingChildReports"; const rows=["A","B","C","D","E","F","G"]; const cols=20; const north=35.1593,south=35.1580,west=129.1550,east=129.1660; const latStep=(north-south)/7,lngStep=(east-west)/20; let map,selected=null,facilities=[],alerts=[]; const grids={};
-    const normal={fillColor:"#f3ddb1",fillOpacity:.3,strokeColor:"#b89962",strokeOpacity:.75,strokeWeight:1},chosen={fillColor:"#f2bb55",fillOpacity:.58,strokeColor:"#9f6c15",strokeOpacity:1,strokeWeight:2},searched={fillColor:"#e53935",fillOpacity:.45,strokeColor:"#c62828",strokeOpacity:1,strokeWeight:2};
-    function info(title,text){document.getElementById("dynamicInfo").innerHTML=`<div class="address">${title}</div><div class="guide">${text}</div>`} function style(id){const g=grids[id];g.polygon.setOptions(g.report?searched:id===selected?chosen:normal)}
-    function choose(id){const previous=selected;selected=id;if(previous&&previous!==id)style(previous);style(id);const text=`현재 선택된 격자 주소: [${id}] 구역`;document.getElementById("panelAddress").textContent=text;document.getElementById("reportGrid").value=id;info(text,"모호했던 기존 해변 위치 설명 대신 격자 주소로 정확한 위치를 안내합니다.")}
-    function addAlert(id,report){const b=document.createElement("button");b.className="alert-pin";b.textContent="🚨";b.onclick=()=>info(`🚨 [${id}] 구역 수색 협조`,`${id} 구역 수색 범위 인근 주민/관광객 수색 협조 요망<br>아동: ${escape(report.name)} / 의상: ${escape(report.clothes)}`);const o=new kakao.maps.CustomOverlay({position:grids[id].center,content:b,yAnchor:.5,zIndex:20});o.setMap(map);alerts.push({id,o})}
-    function saved(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}catch{return[]}} function escape(v){const x=document.createElement("div");x.textContent=v;return x.innerHTML}
-    function initialize(){map=new kakao.maps.Map(document.getElementById("map"),{center:new kakao.maps.LatLng(35.1587,129.1604),level:3});rows.forEach((row,r)=>{for(let c=0;c<cols;c++){const id=`${c+1}-${row}`,top=north-r*latStep,bottom=north-(r+1)*latStep,left=west+c*lngStep,right=west+(c+1)*lngStep,center=new kakao.maps.LatLng((top+bottom)/2,(left+right)/2);const polygon=new kakao.maps.Polygon({path:[new kakao.maps.LatLng(top,left),new kakao.maps.LatLng(top,right),new kakao.maps.LatLng(bottom,right),new kakao.maps.LatLng(bottom,left)],...normal});polygon.setMap(map);const label=new kakao.maps.CustomOverlay({position:center,content:`<div class="overlay-label">${id}</div>`,yAnchor:.5,zIndex:2});label.setMap(map);grids[id]={polygon,center,report:null};kakao.maps.event.addListener(polygon,"mouseover",()=>{if(!grids[id].report&&selected!==id)polygon.setOptions({fillColor:"#ffe08a",fillOpacity:.64,strokeColor:"#b67916",strokeWeight:2})});kakao.maps.event.addListener(polygon,"mouseout",()=>style(id));kakao.maps.event.addListener(polygon,"click",()=>choose(id))}});saved().forEach(r=>{if(grids[r.gridId]){grids[r.gridId].report=r;style(r.gridId);addAlert(r.gridId,r)}});bind()}
-    function bind(){document.getElementById("accessibilityToggle").onclick=function(){const on=!this.classList.contains("active");this.classList.toggle("active",on);this.textContent=on?"♿ 장애인 시설 숨기기":"♿ 장애인 시설 표시";facilities.forEach(o=>o.setMap(null));facilities=[];if(on)[[35.1590,129.1601,"♿","관광안내소 앞 휠체어 경사로"],[35.1587,129.1608,"🚻","관광안내소 인근 장애인 화장실"],[35.1592,129.1648,"♿","조선호텔 앞 접근 가능한 출입구"]].forEach(f=>{const b=document.createElement("button");b.className="facility-pin";b.textContent=f[2];b.onclick=()=>info(`♿ ${f[3]}`,"휠체어 이용자와 교통약자를 위한 접근성 시설 위치입니다.");const o=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(f[0],f[1]),content:b,yAnchor:.5,zIndex:10});o.setMap(map);facilities.push(o)})};document.getElementById("reportButton").onclick=()=>{const name=document.getElementById("childName").value.trim(),clothes=document.getElementById("childClothes").value.trim(),status=document.getElementById("reportStatus");if(!selected||!name||!clothes){status.textContent="이름, 의상/특징을 입력하고 지도에서 마지막 목격 구역을 선택해 주세요.";status.style.color="#d32f2f";return}const report={gridId:selected,name,clothes,createdAt:new Date().toISOString()},list=saved().filter(x=>x.gridId!==selected);list.push(report);localStorage.setItem(STORAGE_KEY,JSON.stringify(list));grids[selected].report=report;style(selected);alerts.filter(x=>x.id===selected).forEach(x=>x.o.setMap(null));alerts=alerts.filter(x=>x.id!==selected);addAlert(selected,report);status.textContent=`[${selected}] 구역 수색 범위가 등록되었습니다. 새로고침 후에도 유지됩니다.`;status.style.color="#087a48";info(`🚨 [${selected}] 구역 수색 범위 등록 완료`,`인근 주민/관광객 수색 협조 요망 · 아동: ${escape(name)} / 의상: ${escape(clothes)}`);document.getElementById("childName").value="";document.getElementById("childClothes").value=""}}
-    if(typeof kakao==="undefined"){window.onload=()=>info("카카오맵 키 설정이 필요합니다.","파일 상단의 YOUR_KAKAO_APP_KEY를 카카오 개발자센터 JavaScript 키로 바꿔 주세요.")}else{kakao.maps.load(initialize)}
-  </script>
+  <script src="script.js"></script>
 </body>
 </html>

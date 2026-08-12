@@ -40,3 +40,8 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/.pnpm-store/
+/build/
+/site-deploy.tar.gz
+/site-package.tar.gz
+/package-lock.json
