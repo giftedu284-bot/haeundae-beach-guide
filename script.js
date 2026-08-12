@@ -29,7 +29,9 @@ let selectedGeoCell;
 let kakaoMap;
 let myLocationMarker;
 const storageKey = "haeundae-beach-guide-reports";
-let selected = "6-D";
+// Address convention imported from haeundae-grid-map-share: rows A/B/C run
+// from the promenade toward the sea, while columns 1/2/3 run west to east.
+let selected = "D6";
 let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
 let facilitiesVisible = true;
 let deckVisible = false;
@@ -167,7 +169,7 @@ function renderGeographicGrid(map) {
         pointBetween(landStart, seaStart, startRatio), pointBetween(landEnd, seaEnd, startRatio),
         pointBetween(landEnd, seaEnd, endRatio), pointBetween(landStart, seaStart, endRatio)
       ];
-      const address = `${column + 1}-${letterLabel(row)}`;
+      const address = `${letterLabel(row)}${column + 1}`;
       const polygon = new window.kakao.maps.Polygon({
         map,
         path: localPath.map(({ u, v }) => { const { lat, lng } = toLatLng(u, v); return new window.kakao.maps.LatLng(lat, lng); }),
