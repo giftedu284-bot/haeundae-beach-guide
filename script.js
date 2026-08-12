@@ -29,7 +29,7 @@ let facilitiesVisible = true;
 let deckVisible = false;
 const geoFacilities = [
   { title: "휠체어 경사로 (시범 위치)", lat: 35.15828, lng: 129.15850 },
-  { title: "장애인 화장실 (시범 위치)", lat: 35.15775, lng: 129.16230 },
+  { title: "장애인 화장실 (시범 위치)", lat: 35.15932, lng: 129.16320 },
   { title: "접근 가능한 출입구 (시범 위치)", lat: 35.15873, lng: 129.16820 }
 ];
 let facilityMarkers = [];
@@ -64,6 +64,41 @@ function isInsideBeach(lat, lng) {
   }
   return inside;
 }
+function clipByLatitude(points, limit, keepAbove) {
+  const output = [];
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[j], b = points[i];
+    const aInside = keepAbove ? a.lat >= limit : a.lat <= limit;
+    const bInside = keepAbove ? b.lat >= limit : b.lat <= limit;
+    if (aInside !== bInside) {
+      const t = (limit - a.lat) / (b.lat - a.lat);
+      output.push({ lat: limit, lng: a.lng + t * (b.lng - a.lng) });
+    }
+    if (bInside) output.push(b);
+  }
+  return output;
+}
+function clipByLongitude(points, limit, keepRight) {
+  const output = [];
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[j], b = points[i];
+    const aInside = keepRight ? a.lng >= limit : a.lng <= limit;
+    const bInside = keepRight ? b.lng >= limit : b.lng <= limit;
+    if (aInside !== bInside) {
+      const t = (limit - a.lng) / (b.lng - a.lng);
+      output.push({ lat: a.lat + t * (b.lat - a.lat), lng: limit });
+    }
+    if (bInside) output.push(b);
+  }
+  return output;
+}
+function clippedBeachCell(lat, lng, latStep, lngStep) {
+  let points = beachBoundary.map(([pointLat, pointLng]) => ({ lat: pointLat, lng: pointLng }));
+  points = clipByLatitude(points, lat, true);
+  points = clipByLatitude(points, lat + latStep, false);
+  points = clipByLongitude(points, lng, true);
+  return clipByLongitude(points, lng + lngStep, false);
+}
 function selectGeoCell(address, polygon) {
   if (selectedGeoCell) selectedGeoCell.setOptions({ fillOpacity: 0.08, strokeColor: "#237a8b" });
   selectedGeoCell = polygon;
@@ -71,6 +106,7 @@ function selectGeoCell(address, polygon) {
   selectAddress(address);
 }
 function findGeoCell(lat, lng) {
+  if (!isInsideBeach(lat, lng)) return null;
   for (const [address, cell] of geoGrid) {
     if (lat >= cell.lat && lat < cell.lat + cell.latStep && lng >= cell.lng && lng < cell.lng + cell.lngStep) return { address, cell };
   }
@@ -112,12 +148,12 @@ function renderGeographicGrid(map) {
   let count = 0;
   for (let row = 0, lat = minLat; lat < maxLat; row++, lat += latStep) {
     for (let column = 0, lng = minLng; lng < maxLng; column++, lng += lngStep) {
-      const centerLat = lat + latStep / 2, centerLng = lng + lngStep / 2;
-      if (!isInsideBeach(centerLat, centerLng)) continue;
+      const clipped = clippedBeachCell(lat, lng, latStep, lngStep);
+      if (clipped.length < 3) continue;
       const address = `${column + 1}-${letterLabel(row)}`;
       const polygon = new window.kakao.maps.Polygon({
         map,
-        path: [[lat,lng],[lat + latStep,lng],[lat + latStep,lng + lngStep],[lat,lng + lngStep]].map(([y,x]) => new window.kakao.maps.LatLng(y,x)),
+        path: clipped.map(({ lat: y, lng: x }) => new window.kakao.maps.LatLng(y, x)),
         strokeWeight: 1, strokeColor: "#237a8b", strokeOpacity: 0.72, fillColor: "#70d1d2", fillOpacity: 0.08
       });
       window.kakao.maps.event.addListener(polygon, "click", () => selectGeoCell(address, polygon));
