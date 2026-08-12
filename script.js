@@ -249,6 +249,10 @@ function updateAddress() {
   document.querySelector("#reportAddress").textContent = addressText();
 }
 function setNotice(message) { document.querySelector("#mapNotice").textContent = message; }
+function setGuideVisible(visible) {
+  document.querySelector("#guideModal").hidden = !visible;
+  if (!visible) localStorage.setItem("haeundae-beach-guide-intro-seen", "true");
+}
 
 function registerReport(event) {
   event.preventDefault();
@@ -279,7 +283,10 @@ function initKakaoMap() {
 
 document.querySelector("#reportForm").addEventListener("submit", registerReport);
 document.querySelector("#locateMe").addEventListener("click", locateMe);
+document.querySelector("#startGuide").addEventListener("click", () => setGuideVisible(false));
+document.querySelector("#openGuide").addEventListener("click", () => setGuideVisible(true));
 document.querySelector("#toggleFacilities").addEventListener("click", (event) => { facilitiesVisible = !facilitiesVisible; event.currentTarget.classList.toggle("active", facilitiesVisible); event.currentTarget.innerHTML = `${facilitiesVisible ? "지도에서 시설 숨기기" : "지도에서 시설 보기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#toggleDeck").addEventListener("click", (event) => { deckVisible = !deckVisible; event.currentTarget.classList.toggle("active", deckVisible); event.currentTarget.innerHTML = `${deckVisible ? "데크길 숨기기" : "데크길 표시하기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
+if (localStorage.getItem("haeundae-beach-guide-intro-seen")) setGuideVisible(false);
 renderGrid(); renderFacilities(); updateAddress(); initKakaoMap();

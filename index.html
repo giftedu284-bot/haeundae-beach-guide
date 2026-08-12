@@ -16,6 +16,20 @@
   </style>
 </head>
 <body>
+  <div id="guideModal" class="guide-modal" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div class="guide-dialog">
+      <p class="tag">HAEUNDAE BEACH GUIDE</p>
+      <h1 id="guideTitle">해변에서 내 위치를<br />쉽게 찾는 안전 지도</h1>
+      <p class="guide-lead">해운대 모래사장을 10m 단위 주소로 나누어, 만남·안전·접근성 정보를 한 곳에서 확인합니다.</p>
+      <div class="guide-features">
+        <article><b>1</b><div><strong>정확한 만남 위치</strong><span>격자를 눌러 “12-C 구역”처럼 위치를 공유해요.</span></div></article>
+        <article><b>2</b><div><strong>내 위치 찾기</strong><span>GPS로 현재 위치의 해변 주소를 확인해요.</span></div></article>
+        <article><b>3</b><div><strong>안전·접근성 정보</strong><span>경사로·화장실·출입구와 데크길을 지도에서 봐요.</span></div></article>
+      </div>
+      <button id="startGuide" class="guide-start" type="button">지도 시작하기</button>
+      <p class="guide-note">실종 신고 기능은 수색 범위를 공유하는 보조 기능입니다. 긴급 상황은 112 또는 현장 안전요원에게 먼저 알려주세요.</p>
+    </div>
+  </div>
   <main class="app-shell">
     <section class="map-section">
       <div id="map" class="beach-map" aria-label="해운대해수욕장 지도">
@@ -28,7 +42,7 @@
       <div class="map-status"><div><span>현재 선택한 위치</span><strong id="selectedAddress">6-D <em>구역</em></strong></div><p id="mapNotice">격자를 선택하면 약속 장소나 마지막 목격 위치를 정확하게 공유할 수 있어요.</p><button id="copyAddress" type="button">주소 복사</button></div>
     </section>
     <aside class="panel">
-      <div class="panel-head"><p class="tag">BEACH SAFETY MAP</p><h2>오늘의 해변 안내</h2><p>필요한 정보를 지도 위에서 바로 확인하세요.</p></div>
+      <div class="panel-head"><p class="tag">BEACH SAFETY MAP</p><h2>해변 주소·안전 안내</h2><p>만남 위치, 내 위치, 접근성 시설을 지도에서 바로 확인하세요.</p><button id="openGuide" class="text-button" type="button">이 앱은 무엇을 하나요? ›</button></div>
       <section class="card location-card"><div class="card-icon">◎</div><div><span>내가 선택한 장소</span><h3 id="panelAddress">6-D 구역 <small>· 10m × 10m</small></h3><p>해운대해수욕장 모래사장</p></div></section>
       <section class="card"><div class="card-title"><div class="card-icon">⌾</div><div><h3>내 현재 위치</h3><p>GPS로 현재 위치의 해변 주소를 찾아요.</p></div></div><button id="locateMe" class="wide-button active" type="button">내 위치로 격자 찾기 <span>⌖</span></button></section>
       <section class="card"><div class="card-title"><div class="card-icon">♿</div><div><h3>장애인 접근성</h3><p>이동에 필요한 시설을 찾아보세요.</p></div></div><button id="toggleFacilities" class="wide-button active" type="button">지도에서 시설 숨기기 <span>›</span></button><button id="toggleDeck" class="wide-button" type="button">데크길 표시하기 <span>›</span></button></section>
