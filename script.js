@@ -43,9 +43,8 @@ let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
 let facilitiesVisible = true;
 let deckVisible = false;
 const geoFacilities = [
-  { title: "휠체어 경사로 (시범 위치)", lat: 35.15828, lng: 129.15850 },
-  { title: "장애인 화장실 (시범 위치)", lat: 35.15932, lng: 129.16320 },
-  { title: "접근 가능한 출입구 (시범 위치)", lat: 35.15873, lng: 129.16820 }
+  { title: "휠체어 경사로 (시범 위치)", label: "♿ 경사로", lat: 35.15828, lng: 129.15850 },
+  { title: "장애인 화장실 (시범 위치)", label: "WC 장애인 화장실", lat: 35.15932, lng: 129.16320 }
 ];
 let facilityMarkers = [];
 let deckLine;
@@ -261,7 +260,11 @@ function renderFacilities() {
   }
   if (!facilitiesVisible) return;
   geoFacilities.forEach((facility) => {
-    const marker = new window.kakao.maps.Marker({ map: kakaoMap, position: new window.kakao.maps.LatLng(facility.lat, facility.lng), title: facility.title });
+    const position = new window.kakao.maps.LatLng(facility.lat, facility.lng);
+    const marker = new window.kakao.maps.CustomOverlay({
+      map: kakaoMap, position, yAnchor: 1,
+      content: `<button class="map-facility-label" type="button" aria-label="${facility.title}">${facility.label}</button>`
+    });
     window.kakao.maps.event.addListener(marker, "click", () => setNotice(`${facility.title}를 선택했어요. 실제 운영 정보는 현장 확인 후 등록합니다.`));
     facilityMarkers.push(marker);
   });
