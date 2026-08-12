@@ -1,6 +1,12 @@
 const HAEUNDAE = { lat: 35.1587, lng: 129.1604 };
 const rows = ["A", "B", "C", "D", "E", "F", "G"];
 const columns = Array.from({ length: 12 }, (_, i) => i + 1);
+// Approximate sand-area boundary: cells outside the curved beach edge are omitted.
+// Replace these ranges with official shoreline survey coordinates before public-safety use.
+const beachCellsByRow = {
+  A: [4, 12], B: [2, 12], C: [1, 12], D: [1, 12],
+  E: [1, 11], F: [2, 10], G: [4, 9]
+};
 const storageKey = "haeundae-beach-guide-reports";
 let selected = "6-D";
 let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
@@ -16,16 +22,23 @@ const facilities = [
 function addressText() { return `${selected} 구역`; }
 function saveReports() { localStorage.setItem(storageKey, JSON.stringify(reports)); }
 function reportAt(address) { return reports.find((report) => report.grid === address); }
+function isBeachCell(row, column) {
+  const [first, last] = beachCellsByRow[row];
+  return column >= first && column <= last;
+}
 
 function renderGrid() {
   const grid = document.querySelector("#beachGrid");
   grid.innerHTML = "";
   rows.forEach((row) => columns.forEach((column) => {
+    if (!isBeachCell(row, column)) return;
     const address = `${column}-${row}`;
     const report = reportAt(address);
     const button = document.createElement("button");
     button.type = "button";
     button.className = `cell${selected === address ? " selected" : ""}${report ? " alert" : ""}`;
+    button.style.gridColumn = String(column);
+    button.style.gridRow = String(rows.indexOf(row) + 1);
     button.setAttribute("aria-label", `${address} 구역 선택`);
     button.innerHTML = report ? "!" : `<span>${column}</span><b>${row}</b>`;
     button.addEventListener("click", () => selectAddress(address));
