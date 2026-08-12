@@ -277,6 +277,18 @@ function setGuideVisible(visible) {
   document.querySelector("#guideModal").hidden = !visible;
   if (!visible) localStorage.setItem("haeundae-beach-guide-intro-seen", "true");
 }
+async function shareMeeting() {
+  const message = `해운대해수욕장 만남 위치: ${addressText()}\n${location.href}`;
+  const result = document.querySelector("#shareResult");
+  try {
+    if (navigator.share) await navigator.share({ title: "해변가이드 만남 위치", text: message, url: location.href });
+    else await navigator.clipboard.writeText(message);
+    result.hidden = false;
+    result.textContent = navigator.share ? "공유 창을 열었어요." : "만남 위치와 지도 링크를 복사했어요.";
+  } catch (error) {
+    if (error.name !== "AbortError") { result.hidden = false; result.textContent = "공유하지 못했어요. 다시 시도해 주세요."; }
+  }
+}
 
 function registerReport(event) {
   event.preventDefault();
@@ -312,6 +324,7 @@ document.querySelector("#reportForm").addEventListener("submit", registerReport)
 document.querySelector("#locateMe").addEventListener("click", locateMe);
 document.querySelector("#startGuide").addEventListener("click", () => setGuideVisible(false));
 document.querySelector("#openGuide").addEventListener("click", () => setGuideVisible(true));
+document.querySelector("#shareMeeting").addEventListener("click", shareMeeting);
 document.querySelector("#toggleFacilities").addEventListener("click", (event) => { facilitiesVisible = !facilitiesVisible; event.currentTarget.classList.toggle("active", facilitiesVisible); event.currentTarget.innerHTML = `${facilitiesVisible ? "지도에서 시설 숨기기" : "지도에서 시설 보기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#toggleDeck").addEventListener("click", (event) => { deckVisible = !deckVisible; event.currentTarget.classList.toggle("active", deckVisible); event.currentTarget.innerHTML = `${deckVisible ? "데크길 숨기기" : "데크길 표시하기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
