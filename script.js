@@ -40,12 +40,10 @@ const storageKey = "haeundae-beach-guide-reports";
 // from the promenade toward the sea, while columns 1/2/3 run west to east.
 let selected = "D6";
 let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
-let facilitiesVisible = true;
+let facilitiesVisible = false;
 let deckVisible = false;
-const geoFacilities = [
-  { title: "휠체어 경사로 (시범 위치)", label: "♿ 경사로", lat: 35.15828, lng: 129.15850 },
-  { title: "장애인 화장실 (시범 위치)", label: "WC 장애인 화장실", lat: 35.15932, lng: 129.16320 }
-];
+// Deliberately empty: only verified, on-land facility coordinates may be shown.
+const geoFacilities = [];
 let facilityMarkers = [];
 let deckLine;
 
@@ -233,7 +231,7 @@ function renderStaticFacilities() {
   const layer = document.querySelector("#facilityLayer");
   layer.innerHTML = "";
   if (deckVisible) { const deck = document.createElement("div"); deck.className = "deck-path"; layer.appendChild(deck); }
-  if (!facilitiesVisible) return;
+  if (!facilitiesVisible || geoFacilities.length === 0) return;
   facilities.forEach((facility) => {
     const button = document.createElement("button");
     button.type = "button"; button.className = "facility";
