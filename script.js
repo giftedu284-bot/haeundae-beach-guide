@@ -74,7 +74,9 @@ function registerReport(event) {
 function initKakaoMap() {
   if (!window.kakao || !window.kakao.maps) return;
   window.kakao.maps.load(() => {
-    const map = new window.kakao.maps.Map(document.querySelector("#map"), { center: new window.kakao.maps.LatLng(HAEUNDAE.lat, HAEUNDAE.lng), level: 4 });
+    const mapElement = document.querySelector("#kakaoMap");
+    Object.assign(mapElement.style, { position: "absolute", inset: "0", zIndex: "0", pointerEvents: "none" });
+    const map = new window.kakao.maps.Map(mapElement, { center: new window.kakao.maps.LatLng(HAEUNDAE.lat, HAEUNDAE.lng), level: 4 });
     new window.kakao.maps.Marker({ position: new window.kakao.maps.LatLng(HAEUNDAE.lat, HAEUNDAE.lng), map, title: "해운대해수욕장" });
     document.querySelector("#mapFallback").style.display = "none";
   });
