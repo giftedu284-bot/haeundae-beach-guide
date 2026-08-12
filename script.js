@@ -156,12 +156,20 @@ function renderGeographicGrid(map) {
   const maxU = Math.ceil(Math.max(...localBoundary.map(({ u }) => u)) / 10) * 10;
   const minV = Math.floor(Math.min(...localBoundary.map(({ v }) => v)) / 10) * 10;
   const maxV = Math.ceil(Math.max(...localBoundary.map(({ v }) => v)) / 10) * 10;
-  let count = 0;
-  for (let row = 0, v = minV; v < maxV; row++, v += 10) {
-    for (let column = 0, u = minU; u < maxU; column++, u += 10) {
+  const candidates = [];
+  for (let v = minV; v < maxV; v += 10) {
+    for (let u = minU; u < maxU; u += 10) {
       const localPath = [{ u, v }, { u: u + 10, v }, { u: u + 10, v: v + 10 }, { u, v: v + 10 }];
       if (!fullCellIsInBeach(localPath, localBoundary)) continue;
-      const address = `${letterLabel(row)}${column + 1}`;
+      candidates.push({ u, v, localPath });
+    }
+  }
+  const activeColumns = [...new Set(candidates.map((cell) => cell.u))].sort((a, b) => a - b);
+  activeColumns.forEach((u, columnIndex) => candidates.filter((cell) => cell.u === u).sort((a, b) => b.v - a.v).forEach((cell, rowIndex) => {
+    cell.address = `${letterLabel(rowIndex)}${columnIndex + 1}`;
+  }));
+  let count = 0;
+  for (const { address, localPath } of candidates) {
       const polygon = new window.kakao.maps.Polygon({
         map,
         path: localPath.map(({ u, v }) => { const { lat, lng } = toLatLng(u, v); return new window.kakao.maps.LatLng(lat, lng); }),
@@ -170,7 +178,6 @@ function renderGeographicGrid(map) {
       window.kakao.maps.event.addListener(polygon, "click", () => selectGeoCell(address, polygon));
       geoGrid.set(address, { polygon, localPath });
       count++;
-    }
   }
   setNotice(`모래사장 경계 안에 완전히 들어가는 ${count.toLocaleString()}개의 10m × 10m 격자를 만들었어요.`);
 }
