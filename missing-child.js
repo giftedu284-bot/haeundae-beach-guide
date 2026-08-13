@@ -1,4 +1,4 @@
-// Missing-child workflow v3.
+// Missing-child workflow v4.
 // IMPORTANT: records are stored only in this browser (localStorage).
 // Final submit registers an in-app record; it does not contact police or any external server.
 (() => {
@@ -24,6 +24,17 @@
 
   function writeJson(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  function lastSeenLabel(draft = state.draft) {
+    if (draft.lastSeenMode === "custom" && draft.lastSeenCustom) {
+      const date = new Date(draft.lastSeenCustom);
+      if (!Number.isNaN(date.getTime())) {
+        return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+      }
+    }
+    const minutes = Number(draft.lastSeenMinutes ?? 5);
+    return minutes === 0 ? "방금 전" : `${minutes}분 전`;
   }
 
   function addStyles() {
@@ -60,12 +71,13 @@
       .missing-v3-choice-grid{display:grid;gap:9px}.missing-v3-choice{border:1px solid #d6e0e4;border-radius:12px;background:#fff;padding:15px;text-align:left;cursor:pointer}.missing-v3-choice strong{display:block;color:#183f52;font-size:14px}.missing-v3-choice span{display:block;margin-top:4px;color:#6a7d84;font-size:10px;line-height:1.45}.missing-v3-choice.report{border-color:#efb1ad;background:#fff8f7}.missing-v3-choice.report strong{color:#c92f2a}.missing-v3-choice.tip{border-color:#b9d2df;background:#f8fcff}
       .missing-v3-form{display:grid;gap:11px}.missing-v3-field{display:block;color:#294e5e;font-size:10px;font-weight:900}.missing-v3-field input,.missing-v3-field textarea,.missing-v3-field select{display:block;width:100%;box-sizing:border-box;margin-top:5px;border:1px solid #cbd8dd;border-radius:9px;padding:10px;background:#fff;color:#173847;font:inherit}.missing-v3-field textarea{min-height:72px;resize:vertical}
       .missing-v3-gender{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:5px}.missing-v3-gender button{border:1px solid #cbd8dd;background:#fff;color:#365b6a;border-radius:9px;padding:10px;font-weight:800;cursor:pointer}.missing-v3-gender button.active{background:#123f69;color:#fff;border-color:#123f69}
+      .missing-v3-time-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}.missing-v3-time-btn{border:1px solid #cbd8dd;background:#fff;color:#365b6a;border-radius:9px;padding:9px 5px;font-weight:800;font-size:10px;cursor:pointer}.missing-v3-time-btn.active{background:#eaf4ff;color:#123f69;border-color:#9fc4e5;box-shadow:inset 0 0 0 1px #c7def2}.missing-v3-custom-time{margin-top:7px}.missing-v3-custom-time[hidden]{display:none!important}
       .missing-v3-zone-row{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end}.missing-v3-zone-use{border:1px solid #a9cad7;background:#f5fbfd;color:#1b596f;border-radius:8px;padding:10px 9px;font-size:9px;font-weight:800;cursor:pointer}
       .missing-v3-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:5px}.missing-v3-actions button,.missing-v3-actions a{box-sizing:border-box;border-radius:10px;padding:11px;text-align:center;text-decoration:none;font-weight:900;font-size:11px;cursor:pointer}.missing-v3-back{border:1px solid #cbd8dd;background:#fff;color:#47636e}.missing-v3-primary{border:0;background:#e54843;color:#fff}.missing-v3-tip-primary{border:0;background:#123f69;color:#fff}
       .missing-v3-review{display:grid;gap:7px;padding:12px;border-radius:11px;background:#f6f9fa}.missing-v3-review div{display:grid;grid-template-columns:82px 1fr;gap:8px;font-size:10px;line-height:1.55}.missing-v3-review b{color:#345563}.missing-v3-review span{color:#173847;overflow-wrap:anywhere}
       .missing-v3-success{text-align:center;padding:12px 2px}.missing-v3-success-mark{width:54px;height:54px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;background:#eef8f1;color:#277044;font-size:25px;font-weight:900}.missing-v3-success h3{margin:0;color:#173b50;font-size:20px}.missing-v3-success p{color:#667c84;font-size:10px;line-height:1.6}.missing-v3-112{display:block;margin-top:12px;border-radius:10px;padding:12px;background:#123f69;color:#fff;text-decoration:none;font-weight:900;font-size:12px}.missing-v3-done{width:100%;margin-top:8px;border:1px solid #cbd8dd;border-radius:10px;padding:10px;background:#fff;color:#405f6b;font-weight:800;cursor:pointer}
       .missing-v3-disclaimer{margin:12px 0 0;padding:9px;border-radius:8px;background:#fff4f1;color:#825a52;font-size:9px;line-height:1.5}
-      @media(max-width:520px){.missing-v3-modal{max-height:88vh;padding:17px}.missing-v3-actions{grid-template-columns:1fr}.missing-v3-status{grid-template-columns:1fr}.missing-v3-zone-row{grid-template-columns:1fr}.missing-v3-title{font-size:18px}}
+      @media(max-width:520px){.missing-v3-modal{max-height:88vh;padding:17px}.missing-v3-actions{grid-template-columns:1fr}.missing-v3-status{grid-template-columns:1fr}.missing-v3-zone-row{grid-template-columns:1fr}.missing-v3-title{font-size:18px}.missing-v3-time-grid{grid-template-columns:repeat(2,1fr)}}
     `;
     document.head.appendChild(style);
   }
@@ -130,10 +142,26 @@
       <h2 id="missingV3ModalTitle" class="missing-v3-title">상황에 맞는 항목을 선택해주세요.</h2>
       <p class="missing-v3-sub">신고 또는 발견 제보 중 하나를 선택하면 같은 창에서 입력을 계속할 수 있습니다.</p>
       <div class="missing-v3-choice-grid">
-        <button class="missing-v3-choice report" type="button" data-modal-action="choose-report"><strong>🚨 미아 신고</strong><span>아이의 이름·성별·나이·특징·마지막으로 본 구역을 입력합니다.</span></button>
+        <button class="missing-v3-choice report" type="button" data-modal-action="choose-report"><strong>🚨 미아 신고</strong><span>아이의 이름·성별·나이·특징·마지막으로 본 구역과 시간을 입력합니다.</span></button>
         <button class="missing-v3-choice tip" type="button" data-modal-action="choose-tip"><strong>📍 발견 제보</strong><span>발견한 아이의 정보와 발견 구역을 입력합니다.</span></button>
       </div>
       <p class="missing-v3-disclaimer">X 버튼을 누르면 이 창이 닫히며, 아직 최종 제출하지 않은 정보는 저장되거나 등록되지 않습니다.</p>`;
+  }
+
+  function timeSelector(d) {
+    const mode = d.lastSeenMode || "preset";
+    const minutes = Number(d.lastSeenMinutes ?? 5);
+    return `
+      <div class="missing-v3-field">마지막으로 본 시간
+        <div class="missing-v3-time-grid">
+          <button class="missing-v3-time-btn ${mode === "preset" && minutes === 0 ? "active" : ""}" type="button" data-last-seen-minutes="0">방금 전</button>
+          <button class="missing-v3-time-btn ${mode === "preset" && minutes === 5 ? "active" : ""}" type="button" data-last-seen-minutes="5">5분 전</button>
+          <button class="missing-v3-time-btn ${mode === "preset" && minutes === 10 ? "active" : ""}" type="button" data-last-seen-minutes="10">10분 전</button>
+          <button class="missing-v3-time-btn ${mode === "preset" && minutes === 30 ? "active" : ""}" type="button" data-last-seen-minutes="30">30분 전</button>
+        </div>
+        <button class="missing-v3-time-btn ${mode === "custom" ? "active" : ""}" style="width:100%;margin-top:6px" type="button" data-last-seen-custom-toggle="true">직접 입력</button>
+        <input id="missingV3CustomTime" class="missing-v3-custom-time" type="datetime-local" value="${esc(d.lastSeenCustom || "")}" ${mode === "custom" ? "" : "hidden"} />
+      </div>`;
   }
 
   function formView(type) {
@@ -150,7 +178,8 @@
         <div class="missing-v3-field">성별<div class="missing-v3-gender"><button type="button" data-gender="남자" class="${d.gender === "남자" ? "active" : ""}">남자</button><button type="button" data-gender="여자" class="${d.gender === "여자" ? "active" : ""}">여자</button></div></div>
         <label class="missing-v3-field">나이<select id="missingV3Age" required>${ageOptions(d.age)}</select></label>
         <label class="missing-v3-field">특징<textarea id="missingV3Features" required placeholder="예: 노란 티셔츠, 파란 모자, 검정 샌들">${esc(d.features || "")}</textarea></label>
-        <div class="missing-v3-field">${zoneLabel}<div class="missing-v3-zone-row"><input id="missingV3Zone" required value="${esc(d.zone || "")}" placeholder="예: D6 구역" /><button id="missingV3UseZone" class="missing-v3-zone-use" type="button">현재 선택 구역 사용</button></div></div>
+        ${isReport ? timeSelector(d) : ""}
+        <div class="missing-v3-field">${zoneLabel}<div class="missing-v3-zone-row"><input id="missingV3Zone" required value="${esc(d.zone || "")}" placeholder="예: HD-A1 구역" /><button id="missingV3UseZone" class="missing-v3-zone-use" type="button">현재 선택 구역 사용</button></div></div>
         <div class="missing-v3-actions"><button class="missing-v3-back" type="button" data-modal-action="back-choice">이전</button><button class="${isReport ? "missing-v3-primary" : "missing-v3-tip-primary"}" type="submit">${submitLabel}</button></div>
       </form>`;
   }
@@ -168,6 +197,7 @@
         <div><b>성별</b><span>${esc(d.gender)}</span></div>
         <div><b>나이</b><span>${esc(d.age)}세</span></div>
         <div><b>특징</b><span>${esc(d.features)}</span></div>
+        ${isReport ? `<div><b>마지막 목격</b><span>${esc(lastSeenLabel(d))}</span></div>` : ""}
         <div><b>${isReport ? "마지막 구역" : "발견 구역"}</b><span>${esc(d.zone)}</span></div>
         <div><b>해변</b><span>${esc(beachName())}</span></div>
       </div>
@@ -197,17 +227,23 @@
   }
 
   function captureForm() {
+    const previous = { ...state.draft };
     state.draft = {
+      ...previous,
       name: document.querySelector("#missingV3Name")?.value.trim() || "",
       gender: state.draft.gender || "",
       age: document.querySelector("#missingV3Age")?.value || "",
       features: document.querySelector("#missingV3Features")?.value.trim() || "",
       zone: document.querySelector("#missingV3Zone")?.value.trim() || ""
     };
+    if (state.draftType === "report" && state.draft.lastSeenMode === "custom") {
+      state.draft.lastSeenCustom = document.querySelector("#missingV3CustomTime")?.value || state.draft.lastSeenCustom || "";
+    }
   }
 
   function validateDraft() {
     if (!state.draft.name || !state.draft.gender || state.draft.age === "" || !state.draft.features || !state.draft.zone) return false;
+    if (state.draftType === "report" && state.draft.lastSeenMode === "custom" && !state.draft.lastSeenCustom) return false;
     return true;
   }
 
@@ -216,7 +252,7 @@
       const action = button.dataset.modalAction;
       if (action === "choose-report" || action === "choose-tip") {
         state.draftType = action === "choose-report" ? "report" : "tip";
-        state.draft = { zone: selectedZone() };
+        state.draft = { zone: selectedZone(), lastSeenMode: "preset", lastSeenMinutes: 5, lastSeenCustom: "" };
         state.modalMode = "form";
         renderModal();
       } else if (action === "back-choice") {
@@ -236,6 +272,29 @@
       document.querySelectorAll("[data-gender]").forEach((b) => b.classList.toggle("active", b === button));
     }));
 
+    document.querySelectorAll("[data-last-seen-minutes]").forEach((button) => button.addEventListener("click", () => {
+      state.draft.lastSeenMode = "preset";
+      state.draft.lastSeenMinutes = Number(button.dataset.lastSeenMinutes || 0);
+      state.draft.lastSeenCustom = "";
+      document.querySelectorAll(".missing-v3-time-btn").forEach((b) => b.classList.remove("active"));
+      button.classList.add("active");
+      const custom = document.querySelector("#missingV3CustomTime");
+      if (custom) { custom.hidden = true; custom.value = ""; }
+    }));
+
+    document.querySelector("[data-last-seen-custom-toggle]")?.addEventListener("click", (event) => {
+      state.draft.lastSeenMode = "custom";
+      document.querySelectorAll(".missing-v3-time-btn").forEach((b) => b.classList.remove("active"));
+      event.currentTarget.classList.add("active");
+      const custom = document.querySelector("#missingV3CustomTime");
+      if (custom) { custom.hidden = false; custom.focus(); }
+    });
+
+    document.querySelector("#missingV3CustomTime")?.addEventListener("input", (event) => {
+      state.draft.lastSeenMode = "custom";
+      state.draft.lastSeenCustom = event.target.value;
+    });
+
     document.querySelector("#missingV3UseZone")?.addEventListener("click", () => {
       const input = document.querySelector("#missingV3Zone");
       if (input) input.value = selectedZone();
@@ -246,6 +305,7 @@
       captureForm();
       if (!validateDraft()) {
         if (!state.draft.gender) alert("성별을 선택해주세요.");
+        else if (state.draftType === "report" && state.draft.lastSeenMode === "custom" && !state.draft.lastSeenCustom) alert("마지막으로 본 시간을 입력해주세요.");
         else event.currentTarget.reportValidity();
         return;
       }
@@ -269,7 +329,14 @@
     };
     if (state.draftType === "report") {
       const profiles = readJson(PROFILE_KEY);
-      const profile = { ...common, status: "신고 접수" };
+      const profile = {
+        ...common,
+        lastSeenTime: lastSeenLabel(state.draft),
+        lastSeenMode: state.draft.lastSeenMode || "preset",
+        lastSeenMinutes: Number(state.draft.lastSeenMinutes ?? 5),
+        lastSeenCustom: state.draft.lastSeenCustom || "",
+        status: "신고 접수"
+      };
       profiles.unshift(profile);
       writeJson(PROFILE_KEY, profiles.slice(0, 50));
       state.lastSubmitted = profile;
@@ -288,7 +355,7 @@
   }
 
   function profileShareText(profile) {
-    return `[미아 수색 보조 정보]\n상태: ${profile.status}\n이름: ${profile.name}\n성별: ${profile.gender}\n나이: ${profile.age}세\n특징: ${profile.features}\n마지막 발견 구역: ${profile.zone}\n해변: ${profile.beach}\n※ 앱 내부 기록이며 112 자동 신고가 아닙니다.`;
+    return `[미아 수색 보조 정보]\n상태: ${profile.status}\n이름: ${profile.name}\n성별: ${profile.gender}\n나이: ${profile.age}세\n특징: ${profile.features}\n마지막 발견 시간: ${profile.lastSeenTime || "미입력"}\n마지막 발견 구역: ${profile.zone}\n해변: ${profile.beach}\n※ 앱 내부 기록이며 112 자동 신고가 아닙니다.`;
   }
 
   async function shareText(text) {
@@ -310,7 +377,7 @@
     }
     box.innerHTML = profiles.map((p) => `
       <article class="missing-v3-profile" data-profile-id="${esc(p.id)}">
-        <div class="missing-v3-profile-head"><div class="missing-v3-avatar">${esc((p.name || "?").slice(0,1))}</div><div><h4>${esc(p.name)}</h4><small>${esc(p.gender)} · ${esc(p.age)}세 · ${esc(p.beach)}</small><p><b>특징</b> ${esc(p.features)}<br><b>마지막 발견 구역</b> ${esc(p.zone)}</p></div></div>
+        <div class="missing-v3-profile-head"><div class="missing-v3-avatar">${esc((p.name || "?").slice(0,1))}</div><div><h4>${esc(p.name)}</h4><small>${esc(p.gender)} · ${esc(p.age)}세 · ${esc(p.beach)}</small><p><b>특징</b> ${esc(p.features)}<br><b>마지막으로 본 시간</b> ${esc(p.lastSeenTime || "미입력")}<br><b>마지막 발견 구역</b> ${esc(p.zone)}</p></div></div>
         <div class="missing-v3-status">${STATUS_OPTIONS.map((status) => `<button type="button" data-status="${status}" class="${p.status === status ? "active" : ""}">${status}</button>`).join("")}</div>
         <div class="missing-v3-profile-actions"><button type="button" data-profile-action="share">정보 공유</button><button type="button" data-profile-action="focus">구역 확인</button></div>
       </article>`).join("");
@@ -333,7 +400,7 @@
       card.querySelector('[data-profile-action="focus"]')?.addEventListener("click", () => {
         const profile = readJson(PROFILE_KEY).find((p) => p.id === id);
         if (!profile) return;
-        setNotice(`${profile.name} · ${profile.beach} · 마지막 발견 구역 ${profile.zone} · 현재 상태 ${profile.status}`);
+        setNotice(`${profile.name} · ${profile.beach} · 마지막 발견 구역 ${profile.zone} · 마지막 목격 ${profile.lastSeenTime || "미입력"} · 현재 상태 ${profile.status}`);
       });
     });
   }
