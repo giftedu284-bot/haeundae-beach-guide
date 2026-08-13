@@ -320,17 +320,19 @@ async function loadWeather() {
 }
 function tideKind(value) {
   const text = String(value || "");
+  if (text === "1" || text === "3") return "만조";
+  if (text === "2" || text === "4") return "간조";
   if (/고|high/i.test(text)) return "만조";
   if (/저|low/i.test(text)) return "간조";
   return "조석";
 }
 function tideTime(item) {
-  const value = item?.tphTime || item?.tideTime || item?.fcstTime || item?.time || "";
+  const value = item?.predcDt || item?.tphTime || item?.tideTime || item?.fcstTime || item?.time || "";
   const match = String(value).match(/(\d{2}:?\d{2})$/);
   return match ? match[1].replace(/(\d{2})(\d{2})$/, "$1:$2") : String(value || "시간 확인 중");
 }
 function tideHeight(item) {
-  const value = item?.tphLevel ?? item?.tideLevel ?? item?.fcstLevel ?? item?.level;
+  const value = item?.predcTdlvVl ?? item?.tphLevel ?? item?.tideLevel ?? item?.fcstLevel ?? item?.level;
   return value === undefined || value === null || value === "" ? "" : ` ${value}cm`;
 }
 async function loadTide() {
@@ -362,7 +364,7 @@ async function loadTide() {
     }
     status.textContent = `공식 조석예보 · ${stationName} 기준`;
     times.hidden = false;
-    times.innerHTML = items.slice(0, 4).map((item) => `<span><b>${tideKind(item?.hlCode || item?.type || item?.extreme)}</b>${tideTime(item)}${tideHeight(item)}</span>`).join("");
+    times.innerHTML = items.slice(0, 4).map((item) => `<span><b>${tideKind(item?.extrSe || item?.hlCode || item?.type || item?.extreme)}</b>${tideTime(item)}${tideHeight(item)}</span>`).join("");
     updated.textContent = `${data.date || "오늘"} 기준 · ${stationName}`;
   } catch (error) {
     status.textContent = "공식 조석 정보를 불러오지 못했어요. 아래 국립해양조사원 링크에서 확인해 주세요.";
