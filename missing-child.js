@@ -1,80 +1,71 @@
-// Missing-child workflow v2.
-// This feature does NOT submit a police report or publish data to a server.
-// It organizes information, marks map locations, stores profiles only in this
-// browser (localStorage), and prepares shareable text for 112 / safety staff.
+// Missing-child workflow v3.
+// IMPORTANT: records are stored only in this browser (localStorage).
+// Final submit registers an in-app record; it does not contact police or any external server.
 (() => {
-  const STORAGE_KEY = "beachGuideMissingChildrenV2";
+  const PROFILE_KEY = "beachGuideMissingChildrenV3";
+  const TIP_KEY = "beachGuideMissingTipsV3";
+  const STATUS_OPTIONS = ["신고 접수", "수색 중", "수색 완료"];
+
   const state = {
-    lastSeenPoint: null,
-    lastSeenLabel: "",
-    minutesAgo: 5,
-    customTime: "",
-    mapPickMode: false,
-    reporterPoint: null,
-    lastSeenOverlay: null,
-    reporterOverlay: null,
-    lastSeenCircle: null,
-    reporterCircle: null,
-    activeReport: null
+    modalMode: "choice",
+    draftType: null,
+    draft: {},
+    lastSubmitted: null
   };
 
+  const esc = (value = "") => String(value).replace(/[&<>'"]/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[ch]));
   const beachName = () => document.querySelector("#beachSelect")?.selectedOptions?.[0]?.textContent?.split(" · ")[0] || "선택한 해변";
-  const fmt = (point) => point ? `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}` : "좌표 확인 중";
+  const selectedZone = () => document.querySelector("#selectedAddress")?.textContent?.replace(/\s+/g, " ").trim() || "";
 
-  function readProfiles() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
+  function readJson(key) {
+    try { return JSON.parse(localStorage.getItem(key) || "[]"); }
     catch { return []; }
   }
 
-  function writeProfiles(profiles) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles.slice(0, 30)));
-  }
-
-  function lastSeenTimeText() {
-    if (state.customTime) {
-      const d = new Date(state.customTime);
-      if (!Number.isNaN(d.getTime())) return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    }
-    return state.minutesAgo === 0 ? "방금 전" : `${state.minutesAgo}분 전`;
+  function writeJson(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
   }
 
   function addStyles() {
-    if (document.querySelector("#missingV2Styles")) return;
+    if (document.querySelector("#missingV3Styles")) return;
     const style = document.createElement("style");
-    style.id = "missingV2Styles";
+    style.id = "missingV3Styles";
     style.textContent = `
       .missing-child-group{background:#fffdfb!important;border-color:#ecc7bd!important}
-      .missing-start{width:100%;border:0;border-radius:12px;padding:13px;background:#e54843;color:#fff;font-weight:900;font-size:14px;cursor:pointer}
-      .missing-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:12px 0}
-      .missing-tab{border:1px solid #c7d7dd;background:#fff;color:#385765;border-radius:10px;padding:9px;font-weight:800;cursor:pointer}
-      .missing-tab.active{background:#113f68;color:#fff;border-color:#113f68}
-      .missing-pane[hidden]{display:none!important}
-      .missing-flow-intro{margin:0 0 12px;padding:11px;border-radius:10px;background:#fff3ef;color:#735149;font-size:10px;line-height:1.55}
-      .missing-step{margin-top:10px;padding:12px;border:1px solid #e2e9ec;border-radius:12px;background:#fff}
-      .missing-step-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}
-      .missing-step-no{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#123f69;color:#fff;font-weight:900;font-size:11px}
-      .missing-step-head strong{font-size:13px;color:#173b50}
-      .missing-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-      .missing-choice,.missing-time-btn{border:1px solid #bfd3dc;background:#f8fcfd;color:#17495f;border-radius:9px;padding:9px 7px;font-weight:800;font-size:10px;cursor:pointer}
-      .missing-choice.active,.missing-time-btn.active{background:#123f69;color:#fff;border-color:#123f69}
-      .missing-state{margin:8px 0 0;padding:8px;border-radius:8px;background:#f3f7f8;color:#58717b;font-size:10px;line-height:1.5}
-      .missing-time-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-      .missing-field{display:block;margin-top:8px;color:#294e5f;font-size:10px;font-weight:800}
-      .missing-field input,.missing-field select,.missing-field textarea{display:block;width:100%;box-sizing:border-box;margin-top:5px;border:1px solid #c9d7dc;border-radius:8px;padding:9px;background:#fff;font:inherit;color:#173847}
-      .missing-field textarea{min-height:58px;resize:vertical}
-      .missing-hat{display:flex;gap:6px;margin-top:5px}.missing-hat label{flex:1;border:1px solid #c9d7dc;border-radius:8px;padding:7px;text-align:center;font-size:10px;background:#fff}
-      .missing-review{padding:9px;border-radius:8px;background:#f7fafb;color:#536d77;font-size:10px;line-height:1.6}
-      .missing-report-btn{width:100%;margin-top:10px;border:0;border-radius:10px;padding:12px;background:#e54843;color:#fff;font-weight:900;cursor:pointer}
-      .missing-warning{margin:8px 0 0;color:#8b6259;font-size:9px;line-height:1.5}
-      .missing-complete{margin-top:10px;padding:11px;border-radius:11px;background:#f1f8ff;border:1px solid #bed8ec}
-      .missing-complete[hidden]{display:none!important}
-      .missing-map-legend{display:flex;gap:12px;margin:8px 0;font-size:9px;color:#536d77}.missing-map-legend span:before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}.missing-map-legend .last:before{background:#e54843}.missing-map-legend .reporter:before{background:#2375c4}
-      .missing-after-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.missing-after-actions button{border:1px solid #9fc2da;background:#fff;color:#185889;border-radius:9px;padding:10px;font-weight:900;cursor:pointer}.missing-after-actions .tip-btn{background:#123f69;color:#fff;border-color:#123f69}
-      .missing-emergency-links{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.missing-emergency-links a{text-align:center;text-decoration:none;padding:9px;border-radius:8px;border:1px solid #e8b0aa;color:#b52a25;background:#fff;font-weight:900;font-size:10px}
-      .missing-profile-list{display:grid;gap:9px}.missing-empty{padding:16px;border:1px dashed #cad8de;border-radius:10px;color:#6a7f87;text-align:center;font-size:10px;line-height:1.5}
-      .missing-profile{padding:11px;border:1px solid #dde6e9;border-radius:12px;background:#fff}.missing-profile-top{display:flex;justify-content:space-between;gap:8px;align-items:start}.missing-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#fff0ed;color:#c83530;font-size:20px;font-weight:900;flex:0 0 auto}.missing-profile h4{margin:0;color:#173b50;font-size:13px}.missing-profile small{color:#7a8b91}.missing-profile p{margin:7px 0 0;color:#566f79;font-size:10px;line-height:1.55}.missing-profile-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:9px}.missing-profile-actions button{border:1px solid #c2d5dd;background:#f9fcfd;color:#17495f;border-radius:8px;padding:8px;font-weight:800;font-size:10px;cursor:pointer}.missing-profile-actions .resolved{border-color:#abd3bb;color:#276b43;background:#f3fbf6}
-      .missing-count{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:999px;background:#e54843;color:#fff;font-size:9px}
-      @media(max-width:520px){.missing-actions,.missing-after-actions{grid-template-columns:1fr}.missing-time-grid{grid-template-columns:repeat(2,1fr)}}
+      .missing-v3-launch{width:100%;border:0;border-radius:13px;padding:14px;background:#e54843;color:#fff;font-weight:900;font-size:15px;cursor:pointer;box-shadow:0 4px 12px #e5484328}
+      .missing-v3-note{margin:10px 0 0;color:#86645d;font-size:10px;line-height:1.55}
+      .missing-v3-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:12px}
+      .missing-v3-tab{border:1px solid #c8d8de;background:#fff;color:#355766;border-radius:9px;padding:9px;font-size:10px;font-weight:800;cursor:pointer}
+      .missing-v3-tab.active{background:#123f69;color:#fff;border-color:#123f69}
+      .missing-v3-pane[hidden]{display:none!important}
+      .missing-v3-list{display:grid;gap:10px;margin-top:10px}
+      .missing-v3-empty{padding:16px;border:1px dashed #cbd9de;border-radius:11px;background:#fff;color:#6f838b;text-align:center;font-size:10px;line-height:1.55}
+      .missing-v3-profile{padding:12px;border:1px solid #dde6e9;border-radius:12px;background:#fff}
+      .missing-v3-profile-head{display:flex;align-items:flex-start;gap:10px}
+      .missing-v3-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#fff0ed;color:#c8342f;font-size:19px;font-weight:900;flex:0 0 auto}
+      .missing-v3-profile h4{margin:0;color:#173b50;font-size:13px}.missing-v3-profile small{color:#758a92}.missing-v3-profile p{margin:7px 0 0;color:#566f79;font-size:10px;line-height:1.6}
+      .missing-v3-status{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px;padding-top:10px;border-top:1px solid #edf1f2}
+      .missing-v3-status button{border:1px solid #ccd9de;background:#f8fbfc;color:#61747c;border-radius:8px;padding:7px 4px;font-size:9px;font-weight:800;cursor:pointer}
+      .missing-v3-status button.active[data-status="신고 접수"]{background:#fff1ef;color:#b8342f;border-color:#e7aaa5}
+      .missing-v3-status button.active[data-status="수색 중"]{background:#fff8e8;color:#8c6418;border-color:#e7cf92}
+      .missing-v3-status button.active[data-status="수색 완료"]{background:#eef9f2;color:#277044;border-color:#a8d4b7}
+      .missing-v3-profile-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.missing-v3-profile-actions button{border:1px solid #c6d8df;background:#fff;color:#24556a;border-radius:8px;padding:8px;font-size:9px;font-weight:800;cursor:pointer}
+      .missing-v3-count{display:inline-block;margin-left:4px;min-width:16px;padding:1px 5px;border-radius:999px;background:#e54843;color:#fff;font-size:9px}
+      .missing-v3-overlay{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;padding:16px;background:rgba(8,29,39,.48);backdrop-filter:blur(2px)}
+      .missing-v3-overlay[hidden]{display:none!important}
+      .missing-v3-modal{position:relative;width:min(430px,calc(100vw - 28px));max-height:min(82vh,720px);overflow:auto;box-sizing:border-box;border-radius:17px;background:#fff;box-shadow:0 18px 60px rgba(0,0,0,.3);padding:20px}
+      .missing-v3-close{position:absolute;right:11px;top:11px;width:34px;height:34px;border:0;border-radius:50%;background:#f2f5f6;color:#284953;font-size:21px;line-height:1;cursor:pointer}
+      .missing-v3-tag{margin:0 38px 5px 0;color:#d33b36;font-size:10px;font-weight:900;letter-spacing:.12em}
+      .missing-v3-title{margin:0 38px 7px 0;color:#12384c;font-size:20px;line-height:1.35}.missing-v3-sub{margin:0 0 15px;color:#667b83;font-size:11px;line-height:1.55}
+      .missing-v3-choice-grid{display:grid;gap:9px}.missing-v3-choice{border:1px solid #d6e0e4;border-radius:12px;background:#fff;padding:15px;text-align:left;cursor:pointer}.missing-v3-choice strong{display:block;color:#183f52;font-size:14px}.missing-v3-choice span{display:block;margin-top:4px;color:#6a7d84;font-size:10px;line-height:1.45}.missing-v3-choice.report{border-color:#efb1ad;background:#fff8f7}.missing-v3-choice.report strong{color:#c92f2a}.missing-v3-choice.tip{border-color:#b9d2df;background:#f8fcff}
+      .missing-v3-form{display:grid;gap:11px}.missing-v3-field{display:block;color:#294e5e;font-size:10px;font-weight:900}.missing-v3-field input,.missing-v3-field textarea,.missing-v3-field select{display:block;width:100%;box-sizing:border-box;margin-top:5px;border:1px solid #cbd8dd;border-radius:9px;padding:10px;background:#fff;color:#173847;font:inherit}.missing-v3-field textarea{min-height:72px;resize:vertical}
+      .missing-v3-gender{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:5px}.missing-v3-gender button{border:1px solid #cbd8dd;background:#fff;color:#365b6a;border-radius:9px;padding:10px;font-weight:800;cursor:pointer}.missing-v3-gender button.active{background:#123f69;color:#fff;border-color:#123f69}
+      .missing-v3-zone-row{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end}.missing-v3-zone-use{border:1px solid #a9cad7;background:#f5fbfd;color:#1b596f;border-radius:8px;padding:10px 9px;font-size:9px;font-weight:800;cursor:pointer}
+      .missing-v3-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:5px}.missing-v3-actions button,.missing-v3-actions a{box-sizing:border-box;border-radius:10px;padding:11px;text-align:center;text-decoration:none;font-weight:900;font-size:11px;cursor:pointer}.missing-v3-back{border:1px solid #cbd8dd;background:#fff;color:#47636e}.missing-v3-primary{border:0;background:#e54843;color:#fff}.missing-v3-tip-primary{border:0;background:#123f69;color:#fff}
+      .missing-v3-review{display:grid;gap:7px;padding:12px;border-radius:11px;background:#f6f9fa}.missing-v3-review div{display:grid;grid-template-columns:82px 1fr;gap:8px;font-size:10px;line-height:1.55}.missing-v3-review b{color:#345563}.missing-v3-review span{color:#173847;overflow-wrap:anywhere}
+      .missing-v3-success{text-align:center;padding:12px 2px}.missing-v3-success-mark{width:54px;height:54px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;background:#eef8f1;color:#277044;font-size:25px;font-weight:900}.missing-v3-success h3{margin:0;color:#173b50;font-size:20px}.missing-v3-success p{color:#667c84;font-size:10px;line-height:1.6}.missing-v3-112{display:block;margin-top:12px;border-radius:10px;padding:12px;background:#123f69;color:#fff;text-decoration:none;font-weight:900;font-size:12px}.missing-v3-done{width:100%;margin-top:8px;border:1px solid #cbd8dd;border-radius:10px;padding:10px;background:#fff;color:#405f6b;font-weight:800;cursor:pointer}
+      .missing-v3-disclaimer{margin:12px 0 0;padding:9px;border-radius:8px;background:#fff4f1;color:#825a52;font-size:9px;line-height:1.5}
+      @media(max-width:520px){.missing-v3-modal{max-height:88vh;padding:17px}.missing-v3-actions{grid-template-columns:1fr}.missing-v3-status{grid-template-columns:1fr}.missing-v3-zone-row{grid-template-columns:1fr}.missing-v3-title{font-size:18px}}
     `;
     document.head.appendChild(style);
   }
@@ -84,154 +75,311 @@
     if (!group) return;
     group.innerHTML = `
       <section class="emergency-card">
-        <p class="tag">MISSING CHILD</p><h3 id="missingChildTitle">미아 찾기</h3>
-        <p>미아 정보를 단계별로 정리하고 마지막 발견 위치를 지도에 표시해 안전요원에게 빠르게 공유합니다.</p>
-        <div><a href="tel:112">112 경찰 신고</a><a href="tel:119">119 구조 요청</a></div>
+        <p class="tag">MISSING CHILD</p><h3 id="missingChildTitle">미아 신고·발견 제보</h3>
+        <p>신고 또는 발견 제보를 선택해 필요한 정보를 앱 안에 정리할 수 있습니다.</p>
       </section>
-      <button id="missingStart" class="missing-start" type="button">미아 찾기 시작하기</button>
-      <div class="missing-tabs" role="tablist">
-        <button class="missing-tab active" type="button" data-tab="report">미아 신고 작성</button>
-        <button class="missing-tab" type="button" data-tab="profiles">등록된 미아 <span id="missingCount" class="missing-count">0</span></button>
+      <button id="missingV3Launch" class="missing-v3-launch" type="button">🚨 신고·제보하기</button>
+      <p class="missing-v3-note">실제 112 신고는 자동으로 이루어지지 않습니다. 필요할 때 사용자가 직접 112 신고 버튼을 눌러야 합니다.</p>
+      <div class="missing-v3-tabs">
+        <button class="missing-v3-tab active" type="button" data-pane="profiles">등록된 미아 <span id="missingV3Count" class="missing-v3-count">0</span></button>
+        <button class="missing-v3-tab" type="button" data-pane="tips">발견 제보 기록</button>
       </div>
-      <div id="missingReportPane" class="missing-pane">
-        <p class="missing-flow-intro">이 앱은 경찰·소방 시스템에 자동 신고하지 않습니다. 실제 신고는 112 또는 현장 안전요원에게 직접 해주세요.</p>
-        <form id="reportForm" hidden>
-          <section class="missing-step"><div class="missing-step-head"><span class="missing-step-no">1</span><strong>마지막 발견 위치 선택</strong></div><div class="missing-actions"><button id="missingUseCurrent" class="missing-choice" type="button">현재 위치 사용</button><button id="missingPickMap" class="missing-choice" type="button">지도에서 선택</button></div><p id="missingLocationState" class="missing-state">위치를 선택해 주세요.</p><div class="report-location"><span>마지막 발견 위치</span><b id="reportAddress">위치 선택 필요</b></div></section>
-          <section class="missing-step"><div class="missing-step-head"><span class="missing-step-no">2</span><strong>마지막으로 본 시간 선택</strong></div><div class="missing-time-grid"><button class="missing-time-btn" type="button" data-minutes="0">방금 전</button><button class="missing-time-btn active" type="button" data-minutes="5">5분 전</button><button class="missing-time-btn" type="button" data-minutes="10">10분 전</button><button class="missing-time-btn" type="button" data-minutes="30">30분 전</button></div><label class="missing-field">직접 입력<input id="missingCustomTime" type="datetime-local" /></label></section>
-          <section class="missing-step"><div class="missing-step-head"><span class="missing-step-no">3</span><strong>아이 정보 입력</strong></div><label class="missing-field">이름 또는 부르는 이름<input id="childName" required placeholder="예: 민준" /></label><label class="missing-field">옷 색상<select id="childClothesColor" required><option value="">선택</option><option>빨간색</option><option>주황색</option><option>노란색</option><option>초록색</option><option>파란색</option><option>보라색</option><option>검정색</option><option>흰색</option><option>회색</option><option>기타/여러 색</option></select></label><div class="missing-field">모자 착용 여부<div class="missing-hat"><label><input type="radio" name="missingHat" value="착용" required /> 착용</label><label><input type="radio" name="missingHat" value="미착용" /> 미착용</label><label><input type="radio" name="missingHat" value="모름" /> 모름</label></div></div><label class="missing-field">인상착의·기타 특징<textarea id="childDescription" required placeholder="예: 노란 반바지, 검정 샌들, 키 약 120cm"></textarea></label></section>
-          <section class="missing-step"><div class="missing-step-head"><span class="missing-step-no">4</span><strong>미아 신고하기</strong></div><div id="missingReview" class="missing-review">입력한 정보가 여기에 정리됩니다.</div><button class="missing-report-btn" type="submit">미아 신고하기</button><p class="missing-warning">이 버튼은 앱 안에 미아 프로필을 등록하고 위치를 표시합니다. 112 자동 접수 기능은 아닙니다.</p><p id="reportResult" class="report-result" hidden></p></section>
-          <section id="missingComplete" class="missing-complete" hidden><div class="missing-step-head"><span class="missing-step-no">5</span><strong>신고 완료 및 위치 확인</strong></div><p id="missingCompleteText"></p><div class="missing-map-legend"><span class="last">마지막 발견 위치</span><span class="reporter">현재 위치</span></div><div class="missing-after-actions"><button id="missingShare" type="button">위치·특징 공유</button><button id="missingTip" class="tip-btn" type="button">제보하기</button></div><div class="missing-emergency-links"><a href="tel:112">112에 전화</a><a href="tel:119">119 구조 요청</a></div></section>
-        </form>
+      <div id="missingV3ProfilesPane" class="missing-v3-pane"><div id="missingV3Profiles" class="missing-v3-list"></div></div>
+      <div id="missingV3TipsPane" class="missing-v3-pane" hidden><div id="missingV3Tips" class="missing-v3-list"></div></div>
+      <div id="missingV3Overlay" class="missing-v3-overlay" hidden aria-hidden="true">
+        <section id="missingV3Modal" class="missing-v3-modal" role="dialog" aria-modal="true" aria-labelledby="missingV3ModalTitle">
+          <button id="missingV3Close" class="missing-v3-close" type="button" aria-label="신고 창 닫기">×</button>
+          <div id="missingV3ModalBody"></div>
+        </section>
       </div>
-      <div id="missingProfilesPane" class="missing-pane" hidden><div id="missingProfiles" class="missing-profile-list"></div></div>
     `;
   }
 
-  function switchTab(tab) {
-    document.querySelectorAll(".missing-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-    document.querySelector("#missingReportPane").hidden = tab !== "report";
-    document.querySelector("#missingProfilesPane").hidden = tab !== "profiles";
-    if (tab === "profiles") renderProfiles();
+  function openModal() {
+    state.modalMode = "choice";
+    state.draftType = null;
+    state.draft = {};
+    state.lastSubmitted = null;
+    const overlay = document.querySelector("#missingV3Overlay");
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    renderModal();
   }
 
-  function setLocation(point, label) {
-    state.lastSeenPoint = point; state.lastSeenLabel = label; state.mapPickMode = false;
-    document.querySelector("#missingUseCurrent")?.classList.toggle("active", label.includes("현재"));
-    document.querySelector("#missingPickMap")?.classList.toggle("active", label.includes("지도"));
-    document.querySelector("#missingLocationState").textContent = `${label} · ${fmt(point)}`;
-    document.querySelector("#reportAddress").textContent = `${beachName()} · ${label}`;
-    updateReview();
+  function closeModal() {
+    const overlay = document.querySelector("#missingV3Overlay");
+    overlay.hidden = true;
+    overlay.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    state.modalMode = "choice";
+    state.draftType = null;
+    state.draft = {};
+    state.lastSubmitted = null;
   }
 
-  function updateReview() {
-    const review = document.querySelector("#missingReview"); if (!review) return;
-    const name = document.querySelector("#childName")?.value.trim() || "이름 미입력";
-    const color = document.querySelector("#childClothesColor")?.value || "옷 색상 미입력";
-    const hat = document.querySelector('input[name="missingHat"]:checked')?.value || "모자 여부 미입력";
-    const desc = document.querySelector("#childDescription")?.value.trim() || "특징 미입력";
-    review.innerHTML = `<b>${name}</b><br>마지막 발견: ${state.lastSeenLabel || "미선택"} · ${lastSeenTimeText()}<br>인상착의: ${color} 옷 · 모자 ${hat}<br>특징: ${desc}`;
+  function ageOptions(value) {
+    let html = '<option value="">나이 선택</option>';
+    for (let age = 0; age <= 18; age++) html += `<option value="${age}" ${String(value) === String(age) ? "selected" : ""}>${age}세</option>`;
+    return html;
   }
 
-  function makeDot(point, color, text) {
-    const el = document.createElement("div");
-    el.style.cssText = `display:flex;align-items:center;gap:5px;padding:5px 8px;border-radius:999px;background:#fff;border:2px solid ${color};box-shadow:0 2px 8px #0002;font-size:10px;font-weight:900;color:#173847;white-space:nowrap`;
-    el.innerHTML = `<span style="width:9px;height:9px;border-radius:50%;background:${color}"></span>${text}`;
-    return new window.kakao.maps.CustomOverlay({ map: kakaoMap, position: new window.kakao.maps.LatLng(point.lat, point.lng), yAnchor: 1.4, content: el });
+  function choiceView() {
+    return `
+      <p class="missing-v3-tag">REPORT · TIP</p>
+      <h2 id="missingV3ModalTitle" class="missing-v3-title">상황에 맞는 항목을 선택해주세요.</h2>
+      <p class="missing-v3-sub">신고 또는 발견 제보 중 하나를 선택하면 같은 창에서 입력을 계속할 수 있습니다.</p>
+      <div class="missing-v3-choice-grid">
+        <button class="missing-v3-choice report" type="button" data-modal-action="choose-report"><strong>🚨 미아 신고</strong><span>아이의 이름·성별·나이·특징·마지막으로 본 구역을 입력합니다.</span></button>
+        <button class="missing-v3-choice tip" type="button" data-modal-action="choose-tip"><strong>📍 발견 제보</strong><span>발견한 아이의 정보와 발견 구역을 입력합니다.</span></button>
+      </div>
+      <p class="missing-v3-disclaimer">X 버튼을 누르면 이 창이 닫히며, 아직 최종 제출하지 않은 정보는 저장되거나 등록되지 않습니다.</p>`;
   }
 
-  function markPositions() {
-    if (!kakaoMap || !state.lastSeenPoint) return;
-    [state.lastSeenOverlay,state.reporterOverlay,state.lastSeenCircle,state.reporterCircle].forEach((o)=>o?.setMap(null));
-    state.lastSeenOverlay = makeDot(state.lastSeenPoint, "#e54843", "마지막 발견");
-    state.lastSeenCircle = new window.kakao.maps.Circle({ map:kakaoMap, center:new window.kakao.maps.LatLng(state.lastSeenPoint.lat,state.lastSeenPoint.lng), radius:25, strokeWeight:2, strokeColor:"#e54843", strokeOpacity:.9, strokeStyle:"shortdash", fillColor:"#e54843", fillOpacity:.08 });
-    if (state.reporterPoint) {
-      state.reporterOverlay = makeDot(state.reporterPoint, "#2375c4", "현재 위치");
-      state.reporterCircle = new window.kakao.maps.Circle({ map:kakaoMap, center:new window.kakao.maps.LatLng(state.reporterPoint.lat,state.reporterPoint.lng), radius:12, strokeWeight:2, strokeColor:"#2375c4", strokeOpacity:.9, fillColor:"#2375c4", fillOpacity:.08 });
-    }
-    kakaoMap.panTo(new window.kakao.maps.LatLng(state.lastSeenPoint.lat,state.lastSeenPoint.lng));
+  function formView(type) {
+    const isReport = type === "report";
+    const d = state.draft;
+    const zoneLabel = isReport ? "마지막으로 본 구역" : "발견 구역";
+    const submitLabel = isReport ? "신고하기" : "제보하기";
+    return `
+      <p class="missing-v3-tag">${isReport ? "MISSING REPORT" : "FOUND TIP"}</p>
+      <h2 id="missingV3ModalTitle" class="missing-v3-title">${isReport ? "미아 신고 정보 입력" : "발견 제보 정보 입력"}</h2>
+      <p class="missing-v3-sub">아래 정보를 확인 가능한 범위에서 입력해주세요.</p>
+      <form id="missingV3Form" class="missing-v3-form">
+        <label class="missing-v3-field">이름<input id="missingV3Name" required value="${esc(d.name || "")}" placeholder="예: 김민준" /></label>
+        <div class="missing-v3-field">성별<div class="missing-v3-gender"><button type="button" data-gender="남자" class="${d.gender === "남자" ? "active" : ""}">남자</button><button type="button" data-gender="여자" class="${d.gender === "여자" ? "active" : ""}">여자</button></div></div>
+        <label class="missing-v3-field">나이<select id="missingV3Age" required>${ageOptions(d.age)}</select></label>
+        <label class="missing-v3-field">특징<textarea id="missingV3Features" required placeholder="예: 노란 티셔츠, 파란 모자, 검정 샌들">${esc(d.features || "")}</textarea></label>
+        <div class="missing-v3-field">${zoneLabel}<div class="missing-v3-zone-row"><input id="missingV3Zone" required value="${esc(d.zone || "")}" placeholder="예: D6 구역" /><button id="missingV3UseZone" class="missing-v3-zone-use" type="button">현재 선택 구역 사용</button></div></div>
+        <div class="missing-v3-actions"><button class="missing-v3-back" type="button" data-modal-action="back-choice">이전</button><button class="${isReport ? "missing-v3-primary" : "missing-v3-tip-primary"}" type="submit">${submitLabel}</button></div>
+      </form>`;
   }
 
-  function getGps() {
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) return resolve(null);
-      navigator.geolocation.getCurrentPosition(({coords})=>resolve({lat:coords.latitude,lng:coords.longitude}),()=>resolve(null),{enableHighAccuracy:true,timeout:6000,maximumAge:15000});
+  function reviewView(type) {
+    const isReport = type === "report";
+    const d = state.draft;
+    return `
+      <p class="missing-v3-tag">FINAL CHECK</p>
+      <h2 id="missingV3ModalTitle" class="missing-v3-title">최종 확인</h2>
+      <p class="missing-v3-sub">아래 정보가 맞는지 확인해주세요. 아직 접수되지 않았습니다.</p>
+      <div class="missing-v3-review">
+        <div><b>구분</b><span>${isReport ? "미아 신고" : "발견 제보"}</span></div>
+        <div><b>이름</b><span>${esc(d.name)}</span></div>
+        <div><b>성별</b><span>${esc(d.gender)}</span></div>
+        <div><b>나이</b><span>${esc(d.age)}세</span></div>
+        <div><b>특징</b><span>${esc(d.features)}</span></div>
+        <div><b>${isReport ? "마지막 구역" : "발견 구역"}</b><span>${esc(d.zone)}</span></div>
+        <div><b>해변</b><span>${esc(beachName())}</span></div>
+      </div>
+      <div class="missing-v3-actions"><button class="missing-v3-back" type="button" data-modal-action="back-form">취소하기</button><button class="${isReport ? "missing-v3-primary" : "missing-v3-tip-primary"}" type="button" data-modal-action="final-submit">${isReport ? "신고하기" : "제보하기"}</button></div>
+      <p class="missing-v3-disclaimer">최종 ${isReport ? "신고하기" : "제보하기"} 버튼을 눌러야 앱 내부 기록이 생성됩니다. 취소하기를 누르면 입력 화면으로 돌아가며 작성 내용은 유지됩니다.</p>`;
+  }
+
+  function successView(type) {
+    return `
+      <div class="missing-v3-success">
+        <div class="missing-v3-success-mark">✓</div>
+        <h3 id="missingV3ModalTitle">접수되었습니다.</h3>
+        <p>${type === "report" ? "미아 신고 정보가 앱 내부의 등록된 미아 목록에 저장되었습니다." : "발견 제보 정보가 앱 내부의 발견 제보 기록에 저장되었습니다."}<br>이 기록은 현재 브라우저에만 저장되며 경찰에 자동 전송되지 않습니다.</p>
+        <a class="missing-v3-112" href="tel:112">112 경찰 신고 전화 연결</a>
+        <button class="missing-v3-done" type="button" data-modal-action="done">닫기</button>
+      </div>`;
+  }
+
+  function renderModal() {
+    const body = document.querySelector("#missingV3ModalBody");
+    if (!body) return;
+    if (state.modalMode === "choice") body.innerHTML = choiceView();
+    else if (state.modalMode === "form") body.innerHTML = formView(state.draftType);
+    else if (state.modalMode === "review") body.innerHTML = reviewView(state.draftType);
+    else body.innerHTML = successView(state.draftType);
+    bindModalControls();
+  }
+
+  function captureForm() {
+    state.draft = {
+      name: document.querySelector("#missingV3Name")?.value.trim() || "",
+      gender: state.draft.gender || "",
+      age: document.querySelector("#missingV3Age")?.value || "",
+      features: document.querySelector("#missingV3Features")?.value.trim() || "",
+      zone: document.querySelector("#missingV3Zone")?.value.trim() || ""
+    };
+  }
+
+  function validateDraft() {
+    if (!state.draft.name || !state.draft.gender || state.draft.age === "" || !state.draft.features || !state.draft.zone) return false;
+    return true;
+  }
+
+  function bindModalControls() {
+    document.querySelectorAll("[data-modal-action]").forEach((button) => button.addEventListener("click", () => {
+      const action = button.dataset.modalAction;
+      if (action === "choose-report" || action === "choose-tip") {
+        state.draftType = action === "choose-report" ? "report" : "tip";
+        state.draft = { zone: selectedZone() };
+        state.modalMode = "form";
+        renderModal();
+      } else if (action === "back-choice") {
+        captureForm();
+        state.modalMode = "choice";
+        renderModal();
+      } else if (action === "back-form") {
+        state.modalMode = "form";
+        renderModal();
+      } else if (action === "final-submit") {
+        finalSubmit();
+      } else if (action === "done") closeModal();
+    }));
+
+    document.querySelectorAll("[data-gender]").forEach((button) => button.addEventListener("click", () => {
+      state.draft.gender = button.dataset.gender;
+      document.querySelectorAll("[data-gender]").forEach((b) => b.classList.toggle("active", b === button));
+    }));
+
+    document.querySelector("#missingV3UseZone")?.addEventListener("click", () => {
+      const input = document.querySelector("#missingV3Zone");
+      if (input) input.value = selectedZone();
+    });
+
+    document.querySelector("#missingV3Form")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      captureForm();
+      if (!validateDraft()) {
+        if (!state.draft.gender) alert("성별을 선택해주세요.");
+        else event.currentTarget.reportValidity();
+        return;
+      }
+      state.modalMode = "review";
+      renderModal();
     });
   }
 
-  function summaryFor(profile) {
-    return `[미아 수색 보조 정보]\n이름: ${profile.name}\n해변: ${profile.beach}\n마지막 발견 위치: ${profile.locationLabel} (${fmt(profile.lastSeenPoint)})\n마지막 발견 시간: ${profile.timeText}\n인상착의: ${profile.color} 옷 · 모자 ${profile.hat}\n특징: ${profile.description}${profile.reporterPoint?`\n현재 신고자 위치: ${fmt(profile.reporterPoint)}`:""}\n지도: ${location.href}\n※ 앱 내 수색 보조 정보이며 112 자동 신고가 아닙니다.`;
-  }
-
-  async function submitReport(event) {
-    event.preventDefault(); event.stopImmediatePropagation();
-    const result = document.querySelector("#reportResult");
-    if (!state.lastSeenPoint) { result.hidden=false; result.textContent="먼저 마지막 발견 위치를 선택해 주세요."; return; }
-    if (!event.currentTarget.reportValidity()) return;
-    state.reporterPoint = await getGps();
-    const profile = {
-      id: `missing-${Date.now()}`,
-      createdAt: Date.now(),
-      name: document.querySelector("#childName").value.trim(),
-      color: document.querySelector("#childClothesColor").value,
-      hat: document.querySelector('input[name="missingHat"]:checked')?.value || "모름",
-      description: document.querySelector("#childDescription").value.trim(),
-      beach: beachName(),
-      locationLabel: state.lastSeenLabel,
-      lastSeenPoint: state.lastSeenPoint,
-      reporterPoint: state.reporterPoint,
-      timeText: lastSeenTimeText(),
-      resolved: false
+  function finalSubmit() {
+    if (!validateDraft()) return;
+    const now = Date.now();
+    const common = {
+      id: `${state.draftType}-${now}`,
+      createdAt: now,
+      name: state.draft.name,
+      gender: state.draft.gender,
+      age: Number(state.draft.age),
+      features: state.draft.features,
+      zone: state.draft.zone,
+      beach: beachName()
     };
-    const profiles = readProfiles(); profiles.unshift(profile); writeProfiles(profiles); state.activeReport = profile;
-    markPositions(); updateCount(); renderProfiles();
-    document.querySelector("#missingComplete").hidden = false;
-    document.querySelector("#missingCompleteText").textContent = `${profile.name} 아동을 앱의 미아 목록에 등록하고 마지막 발견 위치를 지도에 표시했습니다.${profile.reporterPoint?" 현재 신고자 위치도 파란색으로 표시했습니다.":" 현재 위치 권한을 받지 못해 신고자 위치는 표시하지 않았습니다."}`;
-    result.hidden=false; result.textContent="앱 내 등록이 완료됐어요. 실제 신고는 112 또는 현장 안전요원에게 전달해 주세요.";
-    setNotice("미아 수색 보조 정보가 등록됐어요. 112 또는 현장 안전요원에게 위치·시간·인상착의를 전달하세요.");
+    if (state.draftType === "report") {
+      const profiles = readJson(PROFILE_KEY);
+      const profile = { ...common, status: "신고 접수" };
+      profiles.unshift(profile);
+      writeJson(PROFILE_KEY, profiles.slice(0, 50));
+      state.lastSubmitted = profile;
+      renderProfiles();
+    } else {
+      const tips = readJson(TIP_KEY);
+      const tip = { ...common, type: "발견 제보" };
+      tips.unshift(tip);
+      writeJson(TIP_KEY, tips.slice(0, 50));
+      state.lastSubmitted = tip;
+      renderTips();
+    }
+    updateCount();
+    state.modalMode = "success";
+    renderModal();
   }
 
-  async function shareActive(extra="") {
-    if (!state.activeReport) return;
-    const text = `${summaryFor(state.activeReport)}${extra?`\n${extra}`:""}`;
+  function profileShareText(profile) {
+    return `[미아 수색 보조 정보]\n상태: ${profile.status}\n이름: ${profile.name}\n성별: ${profile.gender}\n나이: ${profile.age}세\n특징: ${profile.features}\n마지막 발견 구역: ${profile.zone}\n해변: ${profile.beach}\n※ 앱 내부 기록이며 112 자동 신고가 아닙니다.`;
+  }
+
+  async function shareText(text) {
     try {
-      if (navigator.share) await navigator.share({title:"미아 수색 보조 정보",text,url:location.href});
+      if (navigator.share) await navigator.share({ title: "미아 수색 보조 정보", text, url: location.href });
       else await navigator.clipboard.writeText(text);
-    } catch (e) { if (e.name !== "AbortError") alert("공유하지 못했어요. 다시 시도해 주세요."); }
+    } catch (error) {
+      if (error.name !== "AbortError") alert("공유하지 못했습니다. 다시 시도해주세요.");
+    }
   }
 
   function renderProfiles() {
-    const box = document.querySelector("#missingProfiles"); if (!box) return;
-    const profiles = readProfiles();
-    if (!profiles.length) { box.innerHTML = `<div class="missing-empty">이 브라우저에 등록된 미아 프로필이 없습니다.<br>미아 신고 작성 탭에서 등록하면 여기에 표시됩니다.</div>`; return; }
-    box.innerHTML = profiles.map((p)=>`<article class="missing-profile" data-id="${p.id}"><div class="missing-profile-top"><div class="missing-avatar">${(p.name||"?").slice(0,1)}</div><div style="flex:1"><h4>${p.name}${p.resolved?" · 발견 완료":""}</h4><small>${p.beach} · ${p.timeText}</small><p><b>인상착의</b> ${p.color} 옷 · 모자 ${p.hat}<br><b>특징</b> ${p.description}<br><b>마지막 발견</b> ${p.locationLabel}<br><b>좌표</b> ${fmt(p.lastSeenPoint)}</p></div></div><div class="missing-profile-actions"><button type="button" data-action="share">정보 공유</button><button type="button" data-action="resolved" class="resolved">${p.resolved?"미발견으로 되돌리기":"발견 완료"}</button></div></article>`).join("");
-    box.querySelectorAll(".missing-profile").forEach((card)=>{
-      const id=card.dataset.id;
-      card.querySelector('[data-action="share"]')?.addEventListener("click",async()=>{const p=readProfiles().find(x=>x.id===id);if(!p)return;state.activeReport=p;await shareActive();});
-      card.querySelector('[data-action="resolved"]')?.addEventListener("click",()=>{const list=readProfiles();const p=list.find(x=>x.id===id);if(!p)return;p.resolved=!p.resolved;writeProfiles(list);renderProfiles();updateCount();});
+    const box = document.querySelector("#missingV3Profiles");
+    if (!box) return;
+    const profiles = readJson(PROFILE_KEY);
+    if (!profiles.length) {
+      box.innerHTML = '<div class="missing-v3-empty">등록된 미아 프로필이 없습니다.<br>빨간 신고·제보하기 버튼에서 최종 신고하기를 누르면 여기에 등록됩니다.</div>';
+      return;
+    }
+    box.innerHTML = profiles.map((p) => `
+      <article class="missing-v3-profile" data-profile-id="${esc(p.id)}">
+        <div class="missing-v3-profile-head"><div class="missing-v3-avatar">${esc((p.name || "?").slice(0,1))}</div><div><h4>${esc(p.name)}</h4><small>${esc(p.gender)} · ${esc(p.age)}세 · ${esc(p.beach)}</small><p><b>특징</b> ${esc(p.features)}<br><b>마지막 발견 구역</b> ${esc(p.zone)}</p></div></div>
+        <div class="missing-v3-status">${STATUS_OPTIONS.map((status) => `<button type="button" data-status="${status}" class="${p.status === status ? "active" : ""}">${status}</button>`).join("")}</div>
+        <div class="missing-v3-profile-actions"><button type="button" data-profile-action="share">정보 공유</button><button type="button" data-profile-action="focus">구역 확인</button></div>
+      </article>`).join("");
+
+    box.querySelectorAll(".missing-v3-profile").forEach((card) => {
+      const id = card.dataset.profileId;
+      card.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => {
+        const profilesNow = readJson(PROFILE_KEY);
+        const profile = profilesNow.find((p) => p.id === id);
+        if (!profile) return;
+        profile.status = button.dataset.status;
+        writeJson(PROFILE_KEY, profilesNow);
+        renderProfiles();
+        updateCount();
+      }));
+      card.querySelector('[data-profile-action="share"]')?.addEventListener("click", () => {
+        const profile = readJson(PROFILE_KEY).find((p) => p.id === id);
+        if (profile) shareText(profileShareText(profile));
+      });
+      card.querySelector('[data-profile-action="focus"]')?.addEventListener("click", () => {
+        const profile = readJson(PROFILE_KEY).find((p) => p.id === id);
+        if (!profile) return;
+        setNotice(`${profile.name} · ${profile.beach} · 마지막 발견 구역 ${profile.zone} · 현재 상태 ${profile.status}`);
+      });
     });
   }
 
+  function renderTips() {
+    const box = document.querySelector("#missingV3Tips");
+    if (!box) return;
+    const tips = readJson(TIP_KEY);
+    if (!tips.length) {
+      box.innerHTML = '<div class="missing-v3-empty">접수된 발견 제보가 없습니다.</div>';
+      return;
+    }
+    box.innerHTML = tips.map((p) => `<article class="missing-v3-profile"><div class="missing-v3-profile-head"><div class="missing-v3-avatar">📍</div><div><h4>${esc(p.name)}</h4><small>${esc(p.gender)} · ${esc(p.age)}세 · ${esc(p.beach)}</small><p><b>특징</b> ${esc(p.features)}<br><b>발견 구역</b> ${esc(p.zone)}</p></div></div></article>`).join("");
+  }
+
   function updateCount() {
-    const active = readProfiles().filter((p)=>!p.resolved).length;
-    const count = document.querySelector("#missingCount"); if(count) count.textContent=String(active);
+    const active = readJson(PROFILE_KEY).filter((p) => p.status !== "수색 완료").length;
+    const count = document.querySelector("#missingV3Count");
+    if (count) count.textContent = String(active);
+  }
+
+  function switchPane(name) {
+    document.querySelectorAll(".missing-v3-tab").forEach((button) => button.classList.toggle("active", button.dataset.pane === name));
+    document.querySelector("#missingV3ProfilesPane").hidden = name !== "profiles";
+    document.querySelector("#missingV3TipsPane").hidden = name !== "tips";
+    if (name === "profiles") renderProfiles(); else renderTips();
   }
 
   function init() {
-    addStyles(); renderShell(); updateCount(); renderProfiles();
-    document.querySelector("#missingStart")?.addEventListener("click",()=>{switchTab("report");const form=document.querySelector("#reportForm");form.hidden=false;form.scrollIntoView({behavior:"smooth",block:"nearest"});});
-    document.querySelectorAll(".missing-tab").forEach((b)=>b.addEventListener("click",()=>switchTab(b.dataset.tab)));
-    document.querySelector("#missingUseCurrent")?.addEventListener("click",async()=>{const p=await getGps();if(p){setLocation(p,"현재 위치 사용");kakaoMap?.panTo(new window.kakao.maps.LatLng(p.lat,p.lng));}else document.querySelector("#missingLocationState").textContent="위치 권한을 허용하거나 지도에서 선택해 주세요.";});
-    document.querySelector("#missingPickMap")?.addEventListener("click",()=>{state.mapPickMode=true;document.querySelector("#missingPickMap").classList.add("active");document.querySelector("#missingLocationState").textContent="왼쪽 지도에서 마지막 발견 위치를 눌러 주세요.";setNotice("지도에서 미아를 마지막으로 본 위치를 눌러 주세요.");});
-    document.querySelectorAll(".missing-time-btn").forEach((b)=>b.addEventListener("click",()=>{document.querySelectorAll(".missing-time-btn").forEach(x=>x.classList.toggle("active",x===b));state.minutesAgo=Number(b.dataset.minutes||0);state.customTime="";document.querySelector("#missingCustomTime").value="";updateReview();}));
-    document.querySelector("#missingCustomTime")?.addEventListener("input",(e)=>{state.customTime=e.target.value;document.querySelectorAll(".missing-time-btn").forEach(x=>x.classList.remove("active"));updateReview();});
-    ["#childName","#childClothesColor","#childDescription"].forEach((s)=>document.querySelector(s)?.addEventListener("input",updateReview));
-    document.querySelectorAll('input[name="missingHat"]').forEach((r)=>r.addEventListener("change",updateReview));
-    document.querySelector("#reportForm")?.addEventListener("submit",submitReport,true);
-    document.querySelector("#missingShare")?.addEventListener("click",()=>shareActive());
-    document.querySelector("#missingTip")?.addEventListener("click",()=>shareActive("제보를 받거나 발견 정보를 전달할 때 이 메시지를 함께 공유해 주세요."));
-    if (window.kakaoMap && window.kakao?.maps) window.kakao.maps.event.addListener(kakaoMap,"click",(mouseEvent)=>{if(!state.mapPickMode)return;setLocation({lat:mouseEvent.latLng.getLat(),lng:mouseEvent.latLng.getLng()},"지도에서 선택");});
-    document.querySelector("#beachSelect")?.addEventListener("change",()=>{state.lastSeenPoint=null;state.lastSeenLabel="";state.mapPickMode=false;state.activeReport=null;const c=document.querySelector("#missingComplete");if(c)c.hidden=true;const s=document.querySelector("#missingLocationState");if(s)s.textContent="위치를 선택해 주세요.";});
+    addStyles();
+    renderShell();
+    renderProfiles();
+    renderTips();
+    updateCount();
+
+    document.querySelector("#missingV3Launch")?.addEventListener("click", openModal);
+    document.querySelector("#missingV3Close")?.addEventListener("click", closeModal);
+    document.querySelector("#missingV3Overlay")?.addEventListener("click", (event) => {
+      if (event.target.id === "missingV3Overlay") closeModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !document.querySelector("#missingV3Overlay")?.hidden) closeModal();
+    });
+    document.querySelectorAll(".missing-v3-tab").forEach((button) => button.addEventListener("click", () => switchPane(button.dataset.pane)));
   }
 
-  if (document.readyState === "complete") init(); else window.addEventListener("load",init,{once:true});
+  if (document.readyState === "complete") init();
+  else window.addEventListener("load", init, { once: true });
 })();
