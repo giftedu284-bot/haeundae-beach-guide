@@ -13,6 +13,13 @@
     #beachGrid { display:none !important; }
     #facilityLayer { z-index:51 !important; pointer-events:none !important; }
     #facilityLayer .facility { pointer-events:auto !important; }
+    .safety-index-card{margin-top:18px;padding:16px;border:1px solid #cfe5e1;border-radius:14px;background:#f8fcfb}
+    .safety-index-card h3{margin:6px 0 10px;font-size:16px}
+    .safety-index-main{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;background:#fff}
+    .safety-index-light{font-size:30px;line-height:1}
+    .safety-index-main strong{display:block;font-size:19px}
+    .safety-index-main span{display:block;margin-top:3px;color:#60787e;font-size:11px;line-height:1.45}
+    .safety-index-note{margin:10px 0 0;color:#71868b;font-size:10px;line-height:1.5}
   </style>
 </head>
 <body>
@@ -52,6 +59,15 @@
         <div class="weather-current"><b id="weatherIcon">…</b><strong id="weatherTemp">불러오는 중…</strong><span id="weatherDesc">현재 날씨를 확인하고 있어요.</span></div>
         <div class="weather-details"><span>강수 <b id="weatherRain">–</b></span><span>바람 <b id="weatherWind">–</b></span></div>
         <p id="weatherUpdated" class="weather-updated"></p>
+      </section>
+      <section class="safety-index-card" aria-live="polite">
+        <p class="tag">BEACH SAFETY INDEX</p>
+        <h3>해변 안전 참고지수</h3>
+        <div class="safety-index-main">
+          <div id="safetyIndexLight" class="safety-index-light">⚪</div>
+          <div><strong id="safetyIndexLabel">계산 중</strong><span id="safetyIndexReason">현재 기상 조건을 확인하고 있어요.</span></div>
+        </div>
+        <p class="safety-index-note">기온·강수·바람 등 현재 기상정보를 이용한 참고지수입니다. 이안류·파고·현장 통제 여부는 반영하지 않으므로 현장 안전요원과 공식 안내를 우선하세요.</p>
       </section>
       <section class="tide-card">
         <p class="tag">TIDE INFORMATION</p>
@@ -117,6 +133,49 @@
       }
     });
     renderFacilities();
+
+    function updateSafetyIndexFromWeather() {
+      const tempText = document.querySelector("#weatherTemp")?.textContent || "";
+      const rainText = document.querySelector("#weatherRain")?.textContent || "";
+      const windText = document.querySelector("#weatherWind")?.textContent || "";
+      const descText = document.querySelector("#weatherDesc")?.textContent || "";
+      const light = document.querySelector("#safetyIndexLight");
+      const label = document.querySelector("#safetyIndexLabel");
+      const reason = document.querySelector("#safetyIndexReason");
+      if (!light || !label || !reason) return;
+
+      const temp = parseFloat(tempText);
+      const rain = parseFloat(rainText);
+      const wind = parseFloat(windText);
+      if (![temp, rain, wind].every(Number.isFinite)) {
+        light.textContent = "⚪";
+        label.textContent = "확인 중";
+        reason.textContent = "날씨 정보가 준비되면 자동으로 표시합니다.";
+        return;
+      }
+
+      const severeWeather = /뇌우|강한 비|강한 소나기|우박/.test(descText);
+      if (severeWeather || wind >= 35 || rain >= 10) {
+        light.textContent = "🔴";
+        label.textContent = "위험";
+        reason.textContent = "강한 비·바람 또는 위험 기상 조건이 감지됐어요. 물놀이를 피하고 현장 안내를 확인하세요.";
+      } else if (wind >= 20 || rain >= 2 || temp >= 34) {
+        light.textContent = "🟡";
+        label.textContent = "주의";
+        reason.textContent = "바람·강수 또는 더위에 주의가 필요해요. 현장 상태를 확인하고 무리한 물놀이는 피하세요.";
+      } else {
+        light.textContent = "🟢";
+        label.textContent = "양호";
+        reason.textContent = "현재 기상 조건은 비교적 안정적입니다. 이안류·파고·현장 통제 여부는 별도로 확인하세요.";
+      }
+    }
+
+    const weatherWatch = new MutationObserver(updateSafetyIndexFromWeather);
+    ["#weatherTemp", "#weatherRain", "#weatherWind", "#weatherDesc"].forEach((selector) => {
+      const node = document.querySelector(selector);
+      if (node) weatherWatch.observe(node, { childList: true, subtree: true, characterData: true });
+    });
+    updateSafetyIndexFromWeather();
   </script>
 </body>
 </html>
