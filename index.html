@@ -65,14 +65,15 @@
       <section class="facility-guide-card" aria-labelledby="hygieneGuideTitle">
         <p class="tag">BEACH FACILITIES</p>
         <h3 id="hygieneGuideTitle">씻는 시설·화장실 안내</h3>
-        <p class="facility-guide-intro">필요한 시설을 누르면 이 화면에서 이용 전 확인할 내용을 안내합니다.</p>
+        <p class="facility-guide-intro">공개 지도에 등록된 화장실·세족·샤워 시설을 지도 위에서 바로 확인하세요.</p>
         <div class="facility-guide-list">
           <button class="facility-guide-option active" type="button" data-facility-guide="toilet"><span aria-hidden="true">🚻</span><div><strong>화장실</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
           <button class="facility-guide-option" type="button" data-facility-guide="shower"><span aria-hidden="true">🚿</span><div><strong>간이 샤워 시설</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
           <button class="facility-guide-option" type="button" data-facility-guide="changing"><span aria-hidden="true">👕</span><div><strong>탈의·세족 공간</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
         </div>
-        <div id="facilityGuideDetail" class="facility-guide-detail" role="status"><strong>화장실 이용 안내</strong><p>해변 출입구·산책로 쪽의 공공시설 표지를 먼저 확인하세요. 운영 시간과 청소 시간은 계절에 따라 달라질 수 있습니다.</p></div>
-        <p class="facility-guide-note">정확한 시설 핀과 혼잡도는 현장 좌표·운영 정보가 검증되면 지도에 추가합니다.</p>
+  <button id="toggleHygieneFacilities" class="wide-button active" type="button">지도에서 씻는 시설 숨기기 <span>⌖</span></button>
+        <div id="facilityGuideDetail" class="facility-guide-detail" role="status"><strong>지도 핀 안내</strong><p>🚻은 공중화장실, 🚿는 샤워·세족 가능 시설입니다. 핀을 누르면 시설 정보를 확인할 수 있어요.</p></div>
+        <p class="facility-guide-note">좌표는 공개 지도 데이터 기반입니다. 운영 시간과 실제 개방 여부는 현장 표지를 확인하세요.</p>
       </section>
 
       <section class="emergency-card">

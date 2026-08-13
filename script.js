@@ -52,9 +52,18 @@ let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
 // The former on-device report prototype is retired. Clear only its own data.
 if (reports.length) { reports = []; localStorage.removeItem(storageKey); }
 let facilitiesVisible = false;
+let hygieneFacilitiesVisible = true;
 let deckVisible = false;
-// Deliberately empty: only verified, on-land facility coordinates may be shown.
-const geoFacilities = [];
+// Public OpenStreetMap facility points around Haeundae Beach. These are shown
+// as guidance only; seasonal operating status must still be checked on site.
+const geoFacilities = [
+  { lat: 35.1576925, lng: 129.1558940, label: "🚻", title: "공중화장실", detail: "휠체어 접근 정보가 등록된 공중화장실 · 운영 여부 현장 확인 필요" },
+  { lat: 35.1584198, lng: 129.1557890, label: "🚻", title: "공중화장실", detail: "해변 인근 공중화장실 · 운영 여부 현장 확인 필요" },
+  { lat: 35.1585689, lng: 129.1579280, label: "🚿", title: "화장실·샤워 시설", detail: "온수·유료 이용 정보가 등록된 시설 · 계절·운영 시간 현장 확인 필요" },
+  { lat: 35.1589254, lng: 129.1597873, label: "🚻", title: "공중화장실", detail: "해변 인근 공중화장실 · 운영 여부 현장 확인 필요" },
+  { lat: 35.1596022, lng: 129.1695437, label: "🚻", title: "공중화장실", detail: "해변 동쪽 인근 공중화장실 · 운영 여부 현장 확인 필요" },
+  { lat: 35.1603724, lng: 129.1688642, label: "🚻", title: "공중화장실", detail: "해변 동쪽 인근 공중화장실 · 등록된 운영 시간은 현장 확인 필요" }
+];
 let facilityMarkers = [];
 let deckLine;
 let currentBeachKey = "haeundae";
@@ -243,15 +252,6 @@ function renderStaticFacilities() {
   const layer = document.querySelector("#facilityLayer");
   layer.innerHTML = "";
   if (deckVisible) { const deck = document.createElement("div"); deck.className = "deck-path"; layer.appendChild(deck); }
-  if (!facilitiesVisible || geoFacilities.length === 0) return;
-  facilities.forEach((facility) => {
-    const button = document.createElement("button");
-    button.type = "button"; button.className = "facility";
-    button.style.left = facility.x; button.style.top = facility.y;
-    button.innerHTML = `<span>${facility.icon}</span><i>${facility.name}</i>`;
-    button.addEventListener("click", () => setNotice(`${facility.name}: ${facility.detail}`));
-    layer.appendChild(button);
-  });
 }
 
 function renderFacilities() {
@@ -268,14 +268,24 @@ function renderFacilities() {
       strokeWeight: 7, strokeColor: "#76522a", strokeOpacity: 0.85, strokeStyle: "shortdash"
     });
   }
-  if (!facilitiesVisible) return;
+  if (!hygieneFacilitiesVisible || currentBeachKey !== "haeundae") return;
   geoFacilities.forEach((facility) => {
     const position = new window.kakao.maps.LatLng(facility.lat, facility.lng);
+    const content = document.createElement("button");
+    content.type = "button";
+    content.className = "map-facility-label";
+    content.setAttribute("aria-label", facility.title);
+    content.textContent = facility.label;
+    content.addEventListener("click", () => {
+      setNotice(`${facility.title}: ${facility.detail}`);
+      const detail = document.querySelector("#facilityGuideDetail");
+      detail.querySelector("strong").textContent = facility.title;
+      detail.querySelector("p").textContent = facility.detail;
+    });
     const marker = new window.kakao.maps.CustomOverlay({
       map: kakaoMap, position, yAnchor: 1,
-      content: `<button class="map-facility-label" type="button" aria-label="${facility.title}">${facility.label}</button>`
+      content
     });
-    window.kakao.maps.event.addListener(marker, "click", () => setNotice(`${facility.title}를 선택했어요. 실제 운영 정보는 현장 확인 후 등록합니다.`));
     facilityMarkers.push(marker);
   });
 }
@@ -425,7 +435,7 @@ function initKakaoMap() {
   if (!window.kakao || !window.kakao.maps) return;
   window.kakao.maps.load(() => {
     const mapElement = document.querySelector("#kakaoMap");
-    Object.assign(mapElement.style, { position: "absolute", inset: "0", zIndex: "0", pointerEvents: "none" });
+    Object.assign(mapElement.style, { position: "absolute", inset: "0", zIndex: "0", pointerEvents: "auto" });
     const map = new window.kakao.maps.Map(mapElement, { center: new window.kakao.maps.LatLng(HAEUNDAE.lat, HAEUNDAE.lng), level: 4 });
     kakaoMap = map;
     const bounds = new window.kakao.maps.LatLngBounds();
@@ -447,6 +457,13 @@ document.querySelector("#shareMeeting").addEventListener("click", shareMeeting);
 document.querySelector("#beachSelect").addEventListener("change", changeBeach);
 document.querySelector("#toggleFacilities").addEventListener("click", (event) => { facilitiesVisible = !facilitiesVisible; event.currentTarget.classList.toggle("active", facilitiesVisible); event.currentTarget.innerHTML = `${facilitiesVisible ? "지도에서 시설 숨기기" : "지도에서 시설 보기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#toggleDeck").addEventListener("click", (event) => { deckVisible = !deckVisible; event.currentTarget.classList.toggle("active", deckVisible); event.currentTarget.innerHTML = `${deckVisible ? "데크길 숨기기" : "데크길 표시하기"} <span>›</span>`; renderFacilities(); });
+document.querySelector("#toggleHygieneFacilities").addEventListener("click", (event) => {
+  hygieneFacilitiesVisible = !hygieneFacilitiesVisible;
+  event.currentTarget.classList.toggle("active", hygieneFacilitiesVisible);
+  event.currentTarget.innerHTML = `${hygieneFacilitiesVisible ? "지도에서 씻는 시설 숨기기" : "지도에서 씻는 시설 표시하기"} <span>⌖</span>`;
+  renderFacilities();
+  renderStaticFacilities();
+});
 const facilityGuideInfo = {
   toilet: { title: "화장실 이용 안내", text: "해변 출입구·산책로 쪽의 공공시설 표지를 먼저 확인하세요. 운영 시간과 청소 시간은 계절에 따라 달라질 수 있습니다." },
   shower: { title: "간이 샤워 시설 이용 안내", text: "간이 샤워 시설은 성수기와 운영 기간에 따라 설치·개방 여부가 달라집니다. 물을 절약하고, 샤워 공간에서는 모래와 쓰레기를 남기지 마세요." },
