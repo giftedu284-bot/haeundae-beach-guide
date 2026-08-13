@@ -54,7 +54,6 @@ const facilities = [
   { icon: "WC", name: "장애인 화장실", detail: "해변 중앙", x: "50%", y: "67%" },
   { icon: "↗", name: "접근 가능한 출입구", detail: "해운대역 방면", x: "80%", y: "27%" }
 ];
-
 function addressText() { return `${selected} 구역`; }
 function saveReports() { localStorage.setItem(storageKey, JSON.stringify(reports)); }
 function reportAt(address) { return reports.find((report) => report.grid === address); }
@@ -77,47 +76,10 @@ function locateMe() { const button = document.querySelector("#locateMe"); if (!n
 function renderGeographicGrid(map) { const localBoundary = beachBoundary.map(([lat, lng]) => toLocal(lat, lng)); const minU = Math.floor(Math.min(...localBoundary.map(({ u }) => u)) / 10) * 10, maxU = Math.ceil(Math.max(...localBoundary.map(({ u }) => u)) / 10) * 10, minV = Math.floor(Math.min(...localBoundary.map(({ v }) => v)) / 10) * 10, maxV = Math.ceil(Math.max(...localBoundary.map(({ v }) => v)) / 10) * 10; const candidates = []; for (let v = minV; v < maxV; v += 10) for (let u = minU; u < maxU; u += 10) { const localPath = [{ u, v }, { u: u + 10, v }, { u: u + 10, v: v + 10 }, { u, v: v + 10 }]; if (fullCellIsInBeach(localPath, localBoundary)) candidates.push({ u, v, localPath }); } const activeColumns = [...new Set(candidates.map((cell) => cell.u))].sort((a, b) => a - b); activeColumns.forEach((u, columnIndex) => candidates.filter((cell) => cell.u === u).sort((a, b) => b.v - a.v).forEach((cell, rowIndex) => { cell.address = `${letterLabel(rowIndex)}${columnIndex + 1}`; })); let count = 0; for (const { address, localPath } of candidates) { const polygon = new window.kakao.maps.Polygon({ map, path: localPath.map(({ u, v }) => { const { lat, lng } = toLatLng(u, v); return new window.kakao.maps.LatLng(lat, lng); }), strokeWeight: 1, strokeColor: "#237a8b", strokeOpacity: 0.72, fillColor: "#70d1d2", fillOpacity: 0.08 }); window.kakao.maps.event.addListener(polygon, "click", () => selectGeoCell(address, polygon)); geoGrid.set(address, { polygon, localPath }); count++; } setNotice(`모래사장 경계 안에 완전히 들어가는 ${count.toLocaleString()}개의 10m × 10m 격자를 만들었어요.`); renderSearchOverlays(); }
 function renderGrid() { const grid = document.querySelector("#beachGrid"); grid.innerHTML = ""; rows.forEach((row) => columns.forEach((column) => { if (!isBeachCell(row, column)) return; const address = `${column}-${row}`, report = reportAt(address), button = document.createElement("button"); button.type = "button"; button.className = `cell${selected === address ? " selected" : ""}${report ? " alert" : ""}`; button.style.gridColumn = String(column); button.style.gridRow = String(rows.indexOf(row) + 1); button.setAttribute("aria-label", `${address} 구역 선택`); button.innerHTML = report ? "!" : `<span>${column}</span><b>${row}</b>`; button.addEventListener("click", () => selectAddress(address)); grid.appendChild(button); })); }
 function renderStaticFacilities() { const layer = document.querySelector("#facilityLayer"); layer.innerHTML = ""; if (deckVisible) { const deck = document.createElement("div"); deck.className = "deck-path"; layer.appendChild(deck); } }
-
 const facilityFilterState = { access: true, toilet: true, wash: true };
-function facilityCategory(facility) {
-  const text = `${facility.title || ""} ${facility.label || ""}`;
-  if (/화장실|🚻/.test(text)) return "toilet";
-  if (/샤워|세족|족욕|🚿|🦶/.test(text)) return "wash";
-  return "access";
-}
+function facilityCategory(facility) { const text = `${facility.title || ""} ${facility.label || ""}`; if (/화장실|🚻/.test(text)) return "toilet"; if (/샤워|세족|족욕|🚿|🦶/.test(text)) return "wash"; return "access"; }
 function categoryLabel(category) { return category === "toilet" ? "화장실" : category === "wash" ? "샤워·세족" : "편의·접근성"; }
-function renderFacilities() {
-  const layer = document.querySelector("#facilityLayer");
-  layer.innerHTML = "";
-  if (!kakaoMap) return;
-  facilityMarkers.forEach((marker) => marker.setMap(null));
-  facilityMarkers = [];
-  if (deckLine) { deckLine.setMap(null); deckLine = null; }
-  if (deckVisible && currentBeachKey === "haeundae") {
-    deckLine = new window.kakao.maps.Polyline({ map: kakaoMap, path: [[35.15924,129.16223],[35.15950,129.16349],[35.15964,129.16472],[35.15956,129.16794],[35.15929,129.16962]].map(([lat,lng]) => new window.kakao.maps.LatLng(lat,lng)), strokeWeight: 7, strokeColor: "#76522a", strokeOpacity: 0.9, strokeStyle: "shortdash" });
-  }
-  if (currentBeachKey !== "haeundae") return;
-  geoFacilities.forEach((facility) => {
-    const category = facilityCategory(facility);
-    if (!facilityFilterState[category]) return;
-    const position = new window.kakao.maps.LatLng(facility.lat, facility.lng);
-    const content = document.createElement("button");
-    content.type = "button";
-    content.className = `map-facility-label facility-marker facility-marker--${category}`;
-    content.dataset.facilityCategory = category;
-    content.setAttribute("aria-label", `${categoryLabel(category)} · ${facility.title}`);
-    content.innerHTML = `<span class="facility-marker-icon" aria-hidden="true">${facility.label}</span><span class="facility-marker-name">${facility.title}</span>`;
-    content.addEventListener("click", () => {
-      document.querySelectorAll(".facility-marker.is-selected").forEach((item) => item.classList.remove("is-selected"));
-      content.classList.add("is-selected");
-      setNotice(`${facility.title}: ${facility.detail}`);
-      const detail = document.querySelector("#facilityGuideDetail");
-      if (detail) detail.innerHTML = `<strong>${facility.title}</strong><p>${facility.detail}</p>`;
-    });
-    const marker = new window.kakao.maps.CustomOverlay({ map: kakaoMap, position, yAnchor: 1, zIndex: category === "toilet" ? 6 : category === "wash" ? 5 : 4, content });
-    facilityMarkers.push(marker);
-  });
-}
+function renderFacilities() { const layer = document.querySelector("#facilityLayer"); layer.innerHTML = ""; if (!kakaoMap) return; facilityMarkers.forEach((marker) => marker.setMap(null)); facilityMarkers = []; if (deckLine) { deckLine.setMap(null); deckLine = null; } if (deckVisible && currentBeachKey === "haeundae") { deckLine = new window.kakao.maps.Polyline({ map: kakaoMap, path: [[35.15924,129.16223],[35.15950,129.16349],[35.15964,129.16472],[35.15956,129.16794],[35.15929,129.16962]].map(([lat,lng]) => new window.kakao.maps.LatLng(lat,lng)), strokeWeight: 7, strokeColor: "#76522a", strokeOpacity: 0.9, strokeStyle: "shortdash" }); } if (currentBeachKey !== "haeundae") return; geoFacilities.forEach((facility) => { const category = facilityCategory(facility); if (!facilityFilterState[category]) return; const position = new window.kakao.maps.LatLng(facility.lat, facility.lng); const content = document.createElement("button"); content.type = "button"; content.className = `map-facility-label facility-marker facility-marker--${category}`; content.dataset.facilityCategory = category; content.setAttribute("aria-label", `${categoryLabel(category)} · ${facility.title}`); content.innerHTML = `<span class="facility-marker-icon" aria-hidden="true">${facility.label}</span><span class="facility-marker-name">${facility.title}</span>`; content.addEventListener("click", () => { document.querySelectorAll(".facility-marker.is-selected").forEach((item) => item.classList.remove("is-selected")); content.classList.add("is-selected"); setNotice(`${facility.title}: ${facility.detail}`); const detail = document.querySelector("#facilityGuideDetail"); if (detail) detail.innerHTML = `<strong>${facility.title}</strong><p>${facility.detail}</p>`; }); const marker = new window.kakao.maps.CustomOverlay({ map: kakaoMap, position, yAnchor: 1, zIndex: category === "toilet" ? 6 : category === "wash" ? 5 : 4, content }); facilityMarkers.push(marker); }); }
 function selectAddress(address) { selected = address; renderGrid(); updateAddress(); const found = reportAt(address); setNotice(found ? `수색 알림 · ${found.name} / ${found.description}` : `${addressText()}을 선택했어요. 이 주소를 가족·친구·안전요원에게 알려주세요.`); }
 function updateAddress() { document.querySelector("#selectedAddress").innerHTML = `${selected} <em>구역</em>`; document.querySelector("#panelAddress").innerHTML = `${selected} 구역 <small>· 10m × 10m</small>`; document.querySelector("#reportAddress").textContent = addressText(); }
 function setNotice(message) { document.querySelector("#mapNotice").textContent = message; }
@@ -129,72 +91,33 @@ function tideHeight(item) { const value = item?.predcTdlvVl ?? item?.tphLevel ??
 async function loadTide() { const beach = BEACHES[currentBeachKey] || BEACHES.haeundae, status = document.querySelector("#tideStatus"), times = document.querySelector("#tideTimes"), updated = document.querySelector("#tideUpdated"); document.querySelector("#tideBeach").textContent = `${beach.name} 만조·간조`; times.hidden = true; times.innerHTML = ""; updated.textContent = ""; if (currentBeachKey !== "haeundae") { status.textContent = "이 해변의 공식 예보지점은 검증 후 추가합니다."; return; } status.textContent = "국립해양조사원 조석 정보를 불러오는 중…"; try { const response = await fetch(`${TIDE_WORKER_URL}/tide?obsCode=${encodeURIComponent(TIDE_CONFIG.observationCode)}`); if (!response.ok) throw new Error(); const data = await response.json(), items = Array.isArray(data.items) ? data.items : [], observation = data.observation || {}, stationName = observation.name || "공식 조위관측소"; document.querySelector("#tideBeach").textContent = `${beach.name} 인근 조석`; if (!items.length) { status.textContent = "공식 조석예보 응답을 확인하는 중입니다. 실제 관측·예보 시각이 수신되기 전에는 추측값을 표시하지 않습니다."; updated.textContent = "공식 데이터 수신 대기 중"; return; } status.textContent = `공식 조석예보 · ${stationName} 기준`; times.hidden = false; times.innerHTML = items.slice(0, 4).map((item) => `<span><b>${tideKind(item?.extrSe || item?.hlCode || item?.type || item?.extreme)}</b>${tideTime(item)}${tideHeight(item)}</span>`).join(""); updated.textContent = `${data.date || "오늘"} 기준 · ${stationName}`; } catch { status.textContent = "공식 조석 정보를 불러오지 못했어요. 아래 국립해양조사원 링크에서 확인해 주세요."; updated.textContent = "네트워크 또는 공식 데이터 서버 상태를 확인해 주세요."; } }
 function setGuideVisible(visible) { document.querySelector("#guideModal").hidden = !visible; if (!visible) localStorage.setItem("haeundae-beach-guide-intro-seen", "true"); }
 function changeBeach(event) { const beach = BEACHES[event.target.value]; if (!kakaoMap || !beach) return; currentBeachKey = event.target.value; loadWeather(); loadTide(); kakaoMap.setCenter(new window.kakao.maps.LatLng(beach.lat, beach.lng)); kakaoMap.setLevel(beach.gridReady ? 4 : 5); if (beach.gridReady) { renderGeographicGrid(kakaoMap); renderFacilities(); setNotice(`${beach.name}의 10m 구역 주소와 안전 정보를 확인할 수 있어요.`); } else { geoGrid.forEach(({ polygon }) => polygon.setMap(null)); geoGrid.clear(); facilityMarkers.forEach((marker) => marker.setMap(null)); if (deckLine) deckLine.setMap(null); setNotice(`${beach.name} 지도 탐색을 열었어요. 10m 구역 주소와 시설 정보는 현장 좌표 검증 후 제공합니다.`); } syncFacilityControls(); }
-async function shareMeeting() { const message = `해운대해수욕장 만남 위치: ${addressText()}\n${location.href}`, result = document.querySelector("#shareResult"); try { if (navigator.share) await navigator.share({ title: "해변가이드 만남 위치", text: message, url: location.href }); else await navigator.clipboard.writeText(message); result.hidden = false; result.textContent = navigator.share ? "공유 창을 열었어요." : "만남 위치와 지도 링크를 복사했어요."; } catch (error) { if (error.name !== "AbortError") { result.hidden = false; result.textContent = "공유하지 못했어요. 다시 시도해 주세요."; } } }
+async function shareMeeting() { const message = `해운대해수욕장 만남 위치: ${addressText()}\n${location.href}`, result = document.querySelector("#shareResult"); try { if (navigator.share) await navigator.share({ title: "해변가이드 만남 위치", text: message, url: location.href }); else await navigator.clipboard.writeText(message); if (result) { result.hidden = false; result.textContent = navigator.share ? "공유 창을 열었어요." : "만남 위치와 지도 링크를 복사했어요."; } setNotice(navigator.share ? "선택 위치 공유 창을 열었어요." : "선택 위치와 지도 링크를 복사했어요."); } catch (error) { if (error.name !== "AbortError") { if (result) { result.hidden = false; result.textContent = "공유하지 못했어요. 다시 시도해 주세요."; } setNotice("공유하지 못했어요. 다시 시도해 주세요."); } } }
 function registerReport(event) { event.preventDefault(); const name = document.querySelector("#childName").value.trim(), description = document.querySelector("#childDescription").value.trim(); reports = reports.filter((report) => report.grid !== selected); reports.push({ grid: selected, name, description, createdAt: new Date().toISOString() }); saveReports(); renderGrid(); renderSearchOverlays(); document.querySelector("#reportResult").hidden = false; document.querySelector("#reportResult").textContent = `${addressText()}이 지도에서 빨간색으로 표시됐어요. 이 신고는 현재 이 기기에서만 저장됩니다.`; setNotice(`수색 표시를 ${addressText()}에 등록했어요. 112 또는 현장 안전요원에게도 알려주세요.`); event.target.reset(); }
 function initKakaoMap() { if (!window.kakao || !window.kakao.maps) return; window.kakao.maps.load(() => { const mapElement = document.querySelector("#kakaoMap"); Object.assign(mapElement.style, { position: "absolute", inset: "0", zIndex: "0", pointerEvents: "auto" }); const map = new window.kakao.maps.Map(mapElement, { center: new window.kakao.maps.LatLng(HAEUNDAE.lat, HAEUNDAE.lng), level: 4 }); kakaoMap = map; const bounds = new window.kakao.maps.LatLngBounds(); beachBoundary.forEach(([lat, lng]) => bounds.extend(new window.kakao.maps.LatLng(lat, lng))); map.setBounds(bounds); new window.kakao.maps.Polygon({ map, path: beachBoundary.map(([lat, lng]) => new window.kakao.maps.LatLng(lat, lng)), strokeWeight: 3, strokeColor: "#0e7088", strokeOpacity: 0.9, fillColor: "#80d8d4", fillOpacity: 0.13 }); renderGeographicGrid(map); renderFacilities(); loadWeather(); document.querySelector("#mapFallback").style.display = "none"; }); }
-
-function addFacilityUiStyles() {
-  if (document.querySelector("#facilityUiStyles")) return;
+function addFacilityUiStyles() { if (document.querySelector("#facilityUiStyles")) return; const style = document.createElement("style"); style.id = "facilityUiStyles"; style.textContent = `.map-facility-label.facility-marker{position:relative;display:flex;align-items:center;justify-content:center;min-width:38px;height:38px;padding:0 8px;border:3px solid #fff;border-radius:12px;box-shadow:0 4px 14px rgba(11,48,67,.36);font-size:18px;line-height:1;transition:transform .14s ease,box-shadow .14s ease;overflow:visible}.facility-marker--access{background:#176fc4!important}.facility-marker--toilet{background:#6d4bc3!important}.facility-marker--wash{background:#e67e22!important}.facility-marker:hover,.facility-marker:focus-visible,.facility-marker.is-selected{z-index:50;transform:translateY(-2px) scale(1.08);box-shadow:0 7px 18px rgba(11,48,67,.46);outline:none}.facility-marker-name{position:absolute;left:50%;bottom:43px;display:none;min-width:max-content;max-width:170px;padding:6px 8px;border:1px solid #d8e3e7;border-radius:8px;background:#fff;color:#173e50;font-size:11px;font-weight:800;line-height:1.25;box-shadow:0 5px 16px rgba(15,48,62,.18);transform:translateX(-50%);white-space:nowrap}.facility-marker:hover .facility-marker-name,.facility-marker:focus-visible .facility-marker-name,.facility-marker.is-selected .facility-marker-name{display:block}.facility-filter-panel{margin-top:12px;padding:11px;border:1px solid #d4e5e4;border-radius:12px;background:#f6fbfa}.facility-filter-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}.facility-filter-head strong{font-size:12px;color:#153e50}.facility-filter-head span{font-size:9px;color:#71878d}.facility-filter-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.facility-filter{display:flex;align-items:center;gap:7px;min-height:42px;padding:8px 9px;border:1px solid #ccdce0;border-radius:10px;background:#fff;color:#45636e;text-align:left;font-size:10px;font-weight:800;cursor:pointer}.facility-filter i{width:10px;height:10px;border-radius:50%;flex:0 0 auto}.facility-filter[data-filter="access"] i{background:#176fc4}.facility-filter[data-filter="toilet"] i{background:#6d4bc3}.facility-filter[data-filter="wash"] i{background:#e67e22}.facility-filter[data-filter="deck"] i{background:#76522a}.facility-filter.active{border-color:#79b7bb;background:#eaf7f5;color:#0e5e66}.facility-filter small{display:block;margin-top:2px;color:#789097;font-size:8px;font-weight:600}.facility-filter-all{width:100%;margin-top:7px;padding:9px;border:1px solid #c6dadd;border-radius:9px;background:#fff;color:#315d69;font-size:10px;font-weight:800;cursor:pointer}.facility-map-legend{position:absolute;z-index:8;top:14px;right:14px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;max-width:280px;padding:7px;border-radius:10px;background:rgba(255,255,255,.92);box-shadow:0 3px 12px rgba(20,55,70,.18);pointer-events:none}.facility-map-legend span{display:flex;align-items:center;gap:4px;color:#345763;font-size:9px;font-weight:800}.facility-map-legend i{width:9px;height:9px;border-radius:50%}.facility-map-legend .access{background:#176fc4}.facility-map-legend .toilet{background:#6d4bc3}.facility-map-legend .wash{background:#e67e22}#toggleFacilities,#toggleDeck,#toggleHygieneFacilities{display:none!important}@media(max-width:600px){.facility-map-legend{top:8px;right:8px;max-width:190px}.facility-map-legend span{font-size:8px}.map-facility-label.facility-marker{min-width:36px;height:36px}.facility-filter-grid{grid-template-columns:1fr 1fr}}`; document.head.appendChild(style); }
+function syncFacilityControls() { document.querySelectorAll(".facility-filter[data-filter]").forEach((button) => { const key = button.dataset.filter, active = key === "deck" ? deckVisible : facilityFilterState[key]; button.classList.toggle("active", !!active); button.setAttribute("aria-pressed", String(!!active)); const small = button.querySelector("small"); if (small) small.textContent = active ? "지도에 표시 중" : "숨김"; if (key === "deck") button.disabled = currentBeachKey !== "haeundae"; }); const all = document.querySelector("#facilityFilterAll"); if (all) all.textContent = facilityFilterState.access || facilityFilterState.toilet || facilityFilterState.wash ? "시설 아이콘 전체 숨기기" : "시설 아이콘 전체 표시하기"; }
+function setupFacilityControls() { addFacilityUiStyles(); const firstCard = document.querySelector(".facility-group > .card"); if (firstCard && !firstCard.querySelector(".facility-filter-panel")) { const panel = document.createElement("div"); panel.className = "facility-filter-panel"; panel.innerHTML = `<div class="facility-filter-head"><strong>지도 표시 설정</strong><span>종류별로 켜고 끌 수 있어요</span></div><div class="facility-filter-grid"><button class="facility-filter active" data-filter="access" type="button"><i></i><span>편의·접근성<small>지도에 표시 중</small></span></button><button class="facility-filter active" data-filter="toilet" type="button"><i></i><span>화장실<small>지도에 표시 중</small></span></button><button class="facility-filter active" data-filter="wash" type="button"><i></i><span>샤워·세족<small>지도에 표시 중</small></span></button><button class="facility-filter" data-filter="deck" type="button"><i></i><span>데크길<small>숨김</small></span></button></div><button id="facilityFilterAll" class="facility-filter-all" type="button">시설 아이콘 전체 숨기기</button>`; firstCard.appendChild(panel); panel.querySelectorAll(".facility-filter[data-filter]").forEach((button) => button.addEventListener("click", () => { const key = button.dataset.filter; if (key === "deck") deckVisible = !deckVisible; else facilityFilterState[key] = !facilityFilterState[key]; renderFacilities(); syncFacilityControls(); })); panel.querySelector("#facilityFilterAll").addEventListener("click", () => { const next = !(facilityFilterState.access || facilityFilterState.toilet || facilityFilterState.wash); facilityFilterState.access = facilityFilterState.toilet = facilityFilterState.wash = next; renderFacilities(); syncFacilityControls(); }); } const map = document.querySelector("#map"); if (map && !map.querySelector(".facility-map-legend")) { const legend = document.createElement("div"); legend.className = "facility-map-legend"; legend.innerHTML = `<span><i class="access"></i>편의·접근성</span><span><i class="toilet"></i>화장실</span><span><i class="wash"></i>샤워·세족</span>`; map.appendChild(legend); } const hygieneButton = document.querySelector("#toggleHygieneFacilities"); if (hygieneButton) hygieneButton.insertAdjacentHTML("afterend", '<p class="facility-filter-help" style="margin:8px 0 0;color:#718590;font-size:10px;line-height:1.45">지도 아이콘은 파랑(편의·접근성), 보라(화장실), 주황(샤워·세족)으로 구분됩니다. 아이콘을 누르면 시설명이 지도 위에 표시됩니다.</p>'); syncFacilityControls(); renderFacilities(); }
+function setupCompactSharingUI() {
+  if (document.querySelector("#compactSharingStyles")) return;
   const style = document.createElement("style");
-  style.id = "facilityUiStyles";
-  style.textContent = `
-    .map-facility-label.facility-marker{position:relative;display:flex;align-items:center;justify-content:center;min-width:38px;height:38px;padding:0 8px;border:3px solid #fff;border-radius:12px;box-shadow:0 4px 14px rgba(11,48,67,.36);font-size:18px;line-height:1;transition:transform .14s ease,box-shadow .14s ease;overflow:visible}
-    .facility-marker--access{background:#176fc4!important}.facility-marker--toilet{background:#6d4bc3!important}.facility-marker--wash{background:#e67e22!important}
-    .facility-marker:hover,.facility-marker:focus-visible,.facility-marker.is-selected{z-index:50;transform:translateY(-2px) scale(1.08);box-shadow:0 7px 18px rgba(11,48,67,.46);outline:none}
-    .facility-marker-name{position:absolute;left:50%;bottom:43px;display:none;min-width:max-content;max-width:170px;padding:6px 8px;border:1px solid #d8e3e7;border-radius:8px;background:#fff;color:#173e50;font-size:11px;font-weight:800;line-height:1.25;box-shadow:0 5px 16px rgba(15,48,62,.18);transform:translateX(-50%);white-space:nowrap}
-    .facility-marker:hover .facility-marker-name,.facility-marker:focus-visible .facility-marker-name,.facility-marker.is-selected .facility-marker-name{display:block}
-    .facility-filter-panel{margin-top:12px;padding:11px;border:1px solid #d4e5e4;border-radius:12px;background:#f6fbfa}
-    .facility-filter-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}.facility-filter-head strong{font-size:12px;color:#153e50}.facility-filter-head span{font-size:9px;color:#71878d}
-    .facility-filter-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.facility-filter{display:flex;align-items:center;gap:7px;min-height:42px;padding:8px 9px;border:1px solid #ccdce0;border-radius:10px;background:#fff;color:#45636e;text-align:left;font-size:10px;font-weight:800;cursor:pointer}.facility-filter i{width:10px;height:10px;border-radius:50%;flex:0 0 auto}.facility-filter[data-filter="access"] i{background:#176fc4}.facility-filter[data-filter="toilet"] i{background:#6d4bc3}.facility-filter[data-filter="wash"] i{background:#e67e22}.facility-filter[data-filter="deck"] i{background:#76522a}.facility-filter.active{border-color:#79b7bb;background:#eaf7f5;color:#0e5e66}.facility-filter small{display:block;margin-top:2px;color:#789097;font-size:8px;font-weight:600}.facility-filter-all{width:100%;margin-top:7px;padding:9px;border:1px solid #c6dadd;border-radius:9px;background:#fff;color:#315d69;font-size:10px;font-weight:800;cursor:pointer}
-    .facility-map-legend{position:absolute;z-index:8;top:14px;right:14px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;max-width:280px;padding:7px;border-radius:10px;background:rgba(255,255,255,.92);box-shadow:0 3px 12px rgba(20,55,70,.18);pointer-events:none}.facility-map-legend span{display:flex;align-items:center;gap:4px;color:#345763;font-size:9px;font-weight:800}.facility-map-legend i{width:9px;height:9px;border-radius:50%}.facility-map-legend .access{background:#176fc4}.facility-map-legend .toilet{background:#6d4bc3}.facility-map-legend .wash{background:#e67e22}
-    #toggleFacilities,#toggleDeck,#toggleHygieneFacilities{display:none!important}
-    @media(max-width:600px){.facility-map-legend{top:8px;right:8px;max-width:190px}.facility-map-legend span{font-size:8px}.map-facility-label.facility-marker{min-width:36px;height:36px}.facility-filter-grid{grid-template-columns:1fr 1fr}}
-  `;
+  style.id = "compactSharingStyles";
+  style.textContent = `.panel .location-card{display:none!important}.qr-share-card .qr-download{display:none!important}.map-status{flex-wrap:wrap}.map-status-actions{display:flex;gap:7px;flex:0 0 auto}.map-status-actions button{white-space:nowrap}.map-share-result{flex:0 0 100%;margin:0;padding:6px 8px;border-radius:7px;background:#e7f6f3;color:#176d73;font-size:10px;font-weight:700;text-align:right}@media(max-width:900px){.map-status{gap:8px}.map-status-actions{margin-left:auto}.map-status-actions button{padding:8px 9px}.map-share-result{text-align:left}}`;
   document.head.appendChild(style);
-}
-function syncFacilityControls() {
-  document.querySelectorAll(".facility-filter[data-filter]").forEach((button) => {
-    const key = button.dataset.filter;
-    const active = key === "deck" ? deckVisible : facilityFilterState[key];
-    button.classList.toggle("active", !!active);
-    button.setAttribute("aria-pressed", String(!!active));
-    const small = button.querySelector("small");
-    if (small) small.textContent = active ? "지도에 표시 중" : "숨김";
-    if (key === "deck") button.disabled = currentBeachKey !== "haeundae";
-  });
-  const all = document.querySelector("#facilityFilterAll");
-  if (all) all.textContent = facilityFilterState.access || facilityFilterState.toilet || facilityFilterState.wash ? "시설 아이콘 전체 숨기기" : "시설 아이콘 전체 표시하기";
-}
-function setupFacilityControls() {
-  addFacilityUiStyles();
-  const firstCard = document.querySelector(".facility-group > .card");
-  if (firstCard && !firstCard.querySelector(".facility-filter-panel")) {
-    const panel = document.createElement("div");
-    panel.className = "facility-filter-panel";
-    panel.innerHTML = `<div class="facility-filter-head"><strong>지도 표시 설정</strong><span>종류별로 켜고 끌 수 있어요</span></div><div class="facility-filter-grid"><button class="facility-filter active" data-filter="access" type="button"><i></i><span>편의·접근성<small>지도에 표시 중</small></span></button><button class="facility-filter active" data-filter="toilet" type="button"><i></i><span>화장실<small>지도에 표시 중</small></span></button><button class="facility-filter active" data-filter="wash" type="button"><i></i><span>샤워·세족<small>지도에 표시 중</small></span></button><button class="facility-filter" data-filter="deck" type="button"><i></i><span>데크길<small>숨김</small></span></button></div><button id="facilityFilterAll" class="facility-filter-all" type="button">시설 아이콘 전체 숨기기</button>`;
-    firstCard.appendChild(panel);
-    panel.querySelectorAll(".facility-filter[data-filter]").forEach((button) => button.addEventListener("click", () => {
-      const key = button.dataset.filter;
-      if (key === "deck") deckVisible = !deckVisible; else facilityFilterState[key] = !facilityFilterState[key];
-      renderFacilities(); syncFacilityControls();
-    }));
-    panel.querySelector("#facilityFilterAll").addEventListener("click", () => {
-      const next = !(facilityFilterState.access || facilityFilterState.toilet || facilityFilterState.wash);
-      facilityFilterState.access = facilityFilterState.toilet = facilityFilterState.wash = next;
-      renderFacilities(); syncFacilityControls();
-    });
+  const status = document.querySelector(".map-status");
+  const copy = document.querySelector("#copyAddress");
+  const share = document.querySelector("#shareMeeting");
+  const result = document.querySelector("#shareResult");
+  if (status && copy && share) {
+    const actions = document.createElement("div");
+    actions.className = "map-status-actions";
+    actions.append(copy, share);
+    share.classList.remove("wide-button", "active");
+    share.innerHTML = `위치 공유 <span>↗</span>`;
+    status.appendChild(actions);
+    if (result) { result.className = "map-share-result"; status.appendChild(result); }
   }
-  const map = document.querySelector("#map");
-  if (map && !map.querySelector(".facility-map-legend")) {
-    const legend = document.createElement("div");
-    legend.className = "facility-map-legend";
-    legend.innerHTML = `<span><i class="access"></i>편의·접근성</span><span><i class="toilet"></i>화장실</span><span><i class="wash"></i>샤워·세족</span>`;
-    map.appendChild(legend);
-  }
-  const hygieneButton = document.querySelector("#toggleHygieneFacilities");
-  if (hygieneButton) hygieneButton.insertAdjacentHTML("afterend", '<p class="facility-filter-help" style="margin:8px 0 0;color:#718590;font-size:10px;line-height:1.45">지도 아이콘은 파랑(편의·접근성), 보라(화장실), 주황(샤워·세족)으로 구분됩니다. 아이콘을 누르면 시설명이 지도 위에 표시됩니다.</p>');
-  syncFacilityControls();
-  renderFacilities();
+  document.querySelector(".meet-card")?.remove();
+  document.querySelector(".qr-share-card .qr-download")?.remove();
 }
 
 document.querySelector("#reportForm").addEventListener("submit", registerReport);
@@ -206,13 +129,9 @@ document.querySelector("#beachSelect").addEventListener("change", changeBeach);
 document.querySelector("#toggleFacilities").addEventListener("click", () => {});
 document.querySelector("#toggleDeck").addEventListener("click", () => {});
 document.querySelector("#toggleHygieneFacilities").addEventListener("click", () => {});
-const facilityGuideInfo = {
-  toilet: { title: "화장실 이용 안내", text: "해변 출입구·산책로 쪽의 공공시설 표지를 먼저 확인하세요. 운영 시간과 청소 시간은 계절에 따라 달라질 수 있습니다." },
-  shower: { title: "간이 샤워 시설 이용 안내", text: "간이 샤워 시설은 성수기와 운영 기간에 따라 설치·개방 여부가 달라집니다. 물을 절약하고, 샤워 공간에서는 모래와 쓰레기를 남기지 마세요." },
-  changing: { title: "탈의·세족 공간 이용 안내", text: "탈의·세족 공간은 해변 출입 전후에 이용하세요. 귀중품은 보관하지 말고, 어린이는 보호자와 함께 이동하는 것이 안전합니다." }
-};
+const facilityGuideInfo = { toilet: { title: "화장실 이용 안내", text: "해변 출입구·산책로 쪽의 공공시설 표지를 먼저 확인하세요. 운영 시간과 청소 시간은 계절에 따라 달라질 수 있습니다." }, shower: { title: "간이 샤워 시설 이용 안내", text: "간이 샤워 시설은 성수기와 운영 기간에 따라 설치·개방 여부가 달라집니다. 물을 절약하고, 샤워 공간에서는 모래와 쓰레기를 남기지 마세요." }, changing: { title: "탈의·세족 공간 이용 안내", text: "탈의·세족 공간은 해변 출입 전후에 이용하세요. 귀중품은 보관하지 말고, 어린이는 보호자와 함께 이동하는 것이 안전합니다." } };
 document.querySelectorAll("[data-facility-guide]").forEach((button) => button.addEventListener("click", () => { const info = facilityGuideInfo[button.dataset.facilityGuide]; document.querySelectorAll("[data-facility-guide]").forEach((item) => item.classList.toggle("active", item === button)); document.querySelector("#facilityGuideDetail").innerHTML = `<strong>${info.title}</strong><p>${info.text}</p>`; }));
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
 if (localStorage.getItem("haeundae-beach-guide-intro-seen")) setGuideVisible(false);
-renderGrid(); renderFacilities(); updateAddress(); loadWeather(); loadTide(); initKakaoMap(); setupFacilityControls();
+renderGrid(); renderFacilities(); updateAddress(); loadWeather(); loadTide(); initKakaoMap(); setupFacilityControls(); setupCompactSharingUI();
 window.addEventListener("resize", () => { if (kakaoMap) kakaoMap.relayout(); });
