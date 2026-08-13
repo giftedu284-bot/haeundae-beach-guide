@@ -110,5 +110,13 @@
     </aside>
   </main>
   <script src="script.js"></script>
+  <script>
+    geoFacilities.forEach((facility) => {
+      if (facility.detail.startsWith("팀 현장 조사 좌표 · ")) {
+        facility.detail = facility.detail.replace("팀 현장 조사 좌표 · ", "");
+      }
+    });
+    renderFacilities();
+  </script>
 </body>
 </html>
