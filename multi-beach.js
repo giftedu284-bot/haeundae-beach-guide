@@ -1,26 +1,30 @@
-// First-phase multi-beach extension.
-// Keeps Haeundae's verified grid/facility data intact while making map, GPS,
-// weather, weather-based safety guidance, location sharing and missing-child
-// location marking useful at the other selectable Busan beaches.
+// Multi-beach extension: non-Haeundae guide grids, public-map facilities,
+// GPS/location sharing, and official rip-current monitoring where KHOA supports it.
 (() => {
   const beachMeta = {
-    haeundae: { name: "해운대해수욕장", verifiedGrid: true, verifiedFacilities: true, ripCurrent: true },
-    gwangalli: { name: "광안리해수욕장", verifiedGrid: false, verifiedFacilities: false, ripCurrent: false },
-    songjeong: { name: "송정해수욕장", verifiedGrid: false, verifiedFacilities: false, ripCurrent: false },
-    songdo: { name: "송도해수욕장", verifiedGrid: false, verifiedFacilities: false, ripCurrent: false }
+    haeundae: { name: "해운대해수욕장", lat: 35.1587, lng: 129.1604, ripCode: "HAE", verifiedGrid: true, verifiedFacilities: true },
+    gwangalli: { name: "광안리해수욕장", lat: 35.1532, lng: 129.1186, ripCode: null, verifiedGrid: false, verifiedFacilities: false },
+    songjeong: { name: "송정해수욕장", lat: 35.1785, lng: 129.2016, ripCode: "SONGJUNG", verifiedGrid: false, verifiedFacilities: false },
+    songdo: { name: "송도해수욕장", lat: 35.0767, lng: 129.0178, ripCode: null, verifiedGrid: false, verifiedFacilities: false }
   };
 
+  const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+  const RIP_WORKER_URL = "https://beach-guide-rip-current-api.chopyoz1207.workers.dev";
   let selectedPoint = null;
+  let selectedGuideAddress = null;
+  let selectedGuidePolygon = null;
+  let guideGridOverlays = [];
+  let facilityOverlays = [];
+  let facilityRecords = [];
   let searchMarker = null;
   let searchCircle = null;
+  let facilitiesVisibleOther = true;
+  let hygieneVisibleOther = true;
+  let loadToken = 0;
 
-  function beachKey() {
-    return document.querySelector("#beachSelect")?.value || "haeundae";
-  }
-
-  function meta() {
-    return beachMeta[beachKey()] || beachMeta.haeundae;
-  }
+  const key = () => document.querySelector("#beachSelect")?.value || "haeundae";
+  const meta = () => beachMeta[key()] || beachMeta.haeundae;
+  const isHaeundae = () => key() === "haeundae";
 
   function mapCenterPoint() {
     if (!kakaoMap) return null;
@@ -29,15 +33,14 @@
   }
 
   function activePoint() {
-    return selectedPoint || mapCenterPoint();
+    return selectedPoint || mapCenterPoint() || { lat: meta().lat, lng: meta().lng };
   }
 
   function formatPoint(point) {
-    if (!point) return "위치 확인 중";
-    return `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`;
+    return point ? `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}` : "위치 확인 중";
   }
 
-  function ensureStatusNote(container, className) {
+  function ensureNote(container, className) {
     if (!container) return null;
     let note = container.querySelector(`.${className}`);
     if (!note) {
@@ -49,21 +52,252 @@
     return note;
   }
 
+  function clearGuideGrid() {
+    guideGridOverlays.forEach((overlay) => overlay.setMap(null));
+    guideGridOverlays = [];
+    selectedGuidePolygon = null;
+    selectedGuideAddress = null;
+  }
+
+  function clearOtherFacilities() {
+    facilityOverlays.forEach((overlay) => overlay.setMap(null));
+    facilityOverlays = [];
+    facilityRecords = [];
+  }
+
+  function clearSearchPoint() {
+    if (searchMarker) searchMarker.setMap(null);
+    if (searchCircle) searchCircle.setMap(null);
+    searchMarker = null;
+    searchCircle = null;
+  }
+
+  async function overpass(query) {
+    const response = await fetch(`${OVERPASS_URL}?data=${encodeURIComponent(query)}`, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`overpass ${response.status}`);
+    return response.json();
+  }
+
+  function distanceSq(a, b) {
+    const dy = (a.lat - b.lat) * 111320;
+    const dx = (a.lng - b.lng) * 111320 * Math.cos(a.lat * Math.PI / 180);
+    return dx * dx + dy * dy;
+  }
+
+  function elementPoint(element) {
+    if (Number.isFinite(element.lat) && Number.isFinite(element.lon)) return { lat: element.lat, lng: element.lon };
+    if (element.center && Number.isFinite(element.center.lat) && Number.isFinite(element.center.lon)) return { lat: element.center.lat, lng: element.center.lon };
+    if (Array.isArray(element.geometry) && element.geometry.length) {
+      const sum = element.geometry.reduce((acc, point) => ({ lat: acc.lat + point.lat, lng: acc.lng + point.lon }), { lat: 0, lng: 0 });
+      return { lat: sum.lat / element.geometry.length, lng: sum.lng / element.geometry.length };
+    }
+    return null;
+  }
+
+  function chooseBeachWay(elements, current) {
+    const ways = elements.filter((element) => element.type === "way" && Array.isArray(element.geometry) && element.geometry.length >= 4);
+    if (!ways.length) return null;
+    const nameNeedle = current.name.replace("해수욕장", "");
+    const scored = ways.map((way) => {
+      const point = elementPoint(way) || current;
+      const name = way.tags?.name || way.tags?.["name:ko"] || "";
+      const nameBonus = name.includes(nameNeedle) ? -1e12 : 0;
+      return { way, score: distanceSq(point, current) + nameBonus };
+    });
+    scored.sort((a, b) => a.score - b.score);
+    return scored[0].way;
+  }
+
+  function makeProjection(origin) {
+    const metresPerLat = 111320;
+    const metresPerLng = 111320 * Math.cos(origin.lat * Math.PI / 180);
+    return {
+      toLocal(point) { return { x: (point.lng - origin.lng) * metresPerLng, y: (point.lat - origin.lat) * metresPerLat }; },
+      toLatLng(point) { return { lat: origin.lat + point.y / metresPerLat, lng: origin.lng + point.x / metresPerLng }; }
+    };
+  }
+
+  function pointInside(point, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i], b = polygon[j];
+      const crosses = (a.y > point.y) !== (b.y > point.y) && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+      if (crosses) inside = !inside;
+    }
+    return inside;
+  }
+
+  function gridLabel(row, column) {
+    let n = row + 1;
+    let letters = "";
+    while (n > 0) { n--; letters = String.fromCharCode(65 + (n % 26)) + letters; n = Math.floor(n / 26); }
+    return `${letters}${column + 1}`;
+  }
+
+  function selectGuideCell(address, polygon, centre) {
+    if (selectedGuidePolygon) selectedGuidePolygon.setOptions({ fillOpacity: 0.08, strokeColor: "#237a8b" });
+    selectedGuidePolygon = polygon;
+    selectedGuidePolygon.setOptions({ fillOpacity: 0.48, fillColor: "#f6b73c", strokeColor: "#d76b00" });
+    selectedGuideAddress = address;
+    selectedPoint = centre;
+    updateLocationUI();
+    setNotice(`${meta().name} ${address} 안내격자를 선택했어요. 약속 장소나 마지막 목격 위치 공유에 사용할 수 있어요.`);
+  }
+
+  async function loadGuideGrid(token) {
+    clearGuideGrid();
+    if (isHaeundae() || !kakaoMap) return;
+    const current = meta();
+    setNotice(`${current.name}의 10m 안내격자를 불러오는 중이에요.`);
+    try {
+      const query = `[out:json][timeout:20];way(around:2200,${current.lat},${current.lng})["natural"="beach"];out geom tags;`;
+      const data = await overpass(query);
+      if (token !== loadToken || isHaeundae()) return;
+      const way = chooseBeachWay(data.elements || [], current);
+      if (!way) throw new Error("beach polygon not found");
+      const boundary = way.geometry.map((point) => ({ lat: point.lat, lng: point.lon }));
+      const origin = elementPoint(way) || current;
+      const projection = makeProjection(origin);
+      const local = boundary.map(projection.toLocal);
+      const minX = Math.floor(Math.min(...local.map((p) => p.x)) / 10) * 10;
+      const maxX = Math.ceil(Math.max(...local.map((p) => p.x)) / 10) * 10;
+      const minY = Math.floor(Math.min(...local.map((p) => p.y)) / 10) * 10;
+      const maxY = Math.ceil(Math.max(...local.map((p) => p.y)) / 10) * 10;
+      let count = 0;
+      for (let y = minY, row = 0; y < maxY && count < 2500; y += 10, row++) {
+        for (let x = minX, column = 0; x < maxX && count < 2500; x += 10, column++) {
+          const corners = [{ x, y }, { x: x + 10, y }, { x: x + 10, y: y + 10 }, { x, y: y + 10 }];
+          const centreLocal = { x: x + 5, y: y + 5 };
+          if (!pointInside(centreLocal, local) || !corners.every((corner) => pointInside(corner, local))) continue;
+          const pathPoints = corners.map(projection.toLatLng);
+          const centre = projection.toLatLng(centreLocal);
+          const address = gridLabel(row, column);
+          const polygon = new window.kakao.maps.Polygon({
+            map: kakaoMap,
+            path: pathPoints.map((p) => new window.kakao.maps.LatLng(p.lat, p.lng)),
+            strokeWeight: 1,
+            strokeColor: "#237a8b",
+            strokeOpacity: 0.7,
+            fillColor: "#70d1d2",
+            fillOpacity: 0.08
+          });
+          window.kakao.maps.event.addListener(polygon, "click", () => selectGuideCell(address, polygon, centre));
+          guideGridOverlays.push(polygon);
+          count++;
+        }
+      }
+      const sourceName = way.tags?.name || current.name;
+      setNotice(`${sourceName} 공개 지도 해변 경계를 기준으로 ${count.toLocaleString()}개의 10m 안내격자를 만들었어요. 공식 측량 주소는 아닙니다.`);
+      updateGridNote(count);
+    } catch (error) {
+      updateGridNote(0, true);
+      setNotice(`${current.name}의 공개 지도 해변 경계를 불러오지 못했어요. 지도·GPS 기능은 그대로 사용할 수 있습니다.`);
+    }
+  }
+
+  function updateGridNote(count, failed = false) {
+    const card = document.querySelector(".location-card");
+    const note = ensureNote(card, "multi-beach-grid-note");
+    if (!note) return;
+    if (isHaeundae()) { note.hidden = true; return; }
+    note.hidden = false;
+    note.textContent = failed
+      ? "10m 안내격자용 공개 지도 해변 경계를 불러오지 못했습니다. 잠시 후 다시 선택해 주세요."
+      : `OpenStreetMap 해변 경계를 기준으로 만든 10m 안내격자 ${count.toLocaleString()}개입니다. 공식 측량 주소가 아니라 만남·수색 보조용 안내격자입니다.`;
+  }
+
+  function facilityKind(tags = {}) {
+    if (tags.amenity === "toilets") return { group: "hygiene", icon: "🚻", title: "화장실" };
+    if (tags.amenity === "shower" || tags.shower === "yes") return { group: "hygiene", icon: "🚿", title: "샤워 시설" };
+    if (tags.changing_room === "yes" || tags.amenity === "changing_room") return { group: "hygiene", icon: "👕", title: "탈의 시설" };
+    if (tags.amenity === "parking") return { group: "access", icon: "🅿", title: "주차장" };
+    if (tags.wheelchair === "yes") return { group: "access", icon: "♿", title: "휠체어 접근 가능 시설" };
+    return null;
+  }
+
+  function renderOtherFacilities() {
+    facilityOverlays.forEach((overlay) => overlay.setMap(null));
+    facilityOverlays = [];
+    if (isHaeundae() || !kakaoMap) return;
+    facilityRecords.forEach((record) => {
+      if ((record.group === "access" && !facilitiesVisibleOther) || (record.group === "hygiene" && !hygieneVisibleOther)) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "map-facility-label";
+      button.textContent = record.icon;
+      button.setAttribute("aria-label", record.title);
+      button.addEventListener("click", () => {
+        setNotice(`${record.title}: ${record.detail}`);
+        const detail = document.querySelector("#facilityGuideDetail");
+        if (detail) detail.innerHTML = `<strong>${record.title}</strong><p>${record.detail}</p>`;
+      });
+      const overlay = new window.kakao.maps.CustomOverlay({
+        map: kakaoMap,
+        position: new window.kakao.maps.LatLng(record.point.lat, record.point.lng),
+        yAnchor: 1,
+        content: button
+      });
+      facilityOverlays.push(overlay);
+    });
+  }
+
+  async function loadOtherFacilities(token) {
+    clearOtherFacilities();
+    if (isHaeundae()) return;
+    const current = meta();
+    const query = `[out:json][timeout:20];(
+      nwr(around:1300,${current.lat},${current.lng})["amenity"="toilets"];
+      nwr(around:1300,${current.lat},${current.lng})["amenity"="shower"];
+      nwr(around:1300,${current.lat},${current.lng})["shower"="yes"];
+      nwr(around:1300,${current.lat},${current.lng})["amenity"="changing_room"];
+      nwr(around:1300,${current.lat},${current.lng})["changing_room"="yes"];
+      nwr(around:1300,${current.lat},${current.lng})["amenity"="parking"];
+      nwr(around:900,${current.lat},${current.lng})["wheelchair"="yes"];
+    );out center tags;`;
+    try {
+      const data = await overpass(query);
+      if (token !== loadToken || isHaeundae()) return;
+      const seen = new Set();
+      facilityRecords = (data.elements || []).map((element) => {
+        const point = elementPoint(element);
+        const kind = facilityKind(element.tags || {});
+        if (!point || !kind) return null;
+        const id = `${kind.title}:${point.lat.toFixed(5)}:${point.lng.toFixed(5)}`;
+        if (seen.has(id)) return null;
+        seen.add(id);
+        const name = element.tags?.name || element.tags?.["name:ko"] || kind.title;
+        const detail = `${name} · OpenStreetMap 공개 지도 좌표 · 운영 여부는 현장 확인 필요`;
+        return { point, ...kind, title: name, detail, dist: distanceSq(point, current) };
+      }).filter(Boolean).sort((a, b) => a.dist - b.dist).slice(0, 40);
+      renderOtherFacilities();
+      updateFacilityNote();
+    } catch (error) {
+      facilityRecords = [];
+      updateFacilityNote(true);
+    }
+  }
+
+  function updateFacilityNote(failed = false) {
+    const group = document.querySelector(".facility-group");
+    const note = ensureNote(group, "multi-beach-facility-note");
+    if (!note) return;
+    if (isHaeundae()) { note.hidden = true; return; }
+    note.hidden = false;
+    note.textContent = failed
+      ? `${meta().name} 주변 공개 지도 시설 좌표를 불러오지 못했습니다. 운영 여부와 위치는 현장 표지를 확인하세요.`
+      : `${meta().name} 주변 화장실·샤워·주차·휠체어 접근 시설 ${facilityRecords.length}곳을 OpenStreetMap 공개 지도 좌표로 표시합니다. 공식 시설 목록이 아니며 운영 여부는 현장 확인이 필요합니다.`;
+  }
+
   function weatherValues() {
     const number = (selector) => {
       const value = parseFloat(document.querySelector(selector)?.textContent || "");
       return Number.isFinite(value) ? value : null;
     };
-    return {
-      temp: number("#weatherTemp"),
-      rain: number("#weatherRain"),
-      wind: number("#weatherWind"),
-      desc: document.querySelector("#weatherDesc")?.textContent || ""
-    };
+    return { temp: number("#weatherTemp"), rain: number("#weatherRain"), wind: number("#weatherWind"), desc: document.querySelector("#weatherDesc")?.textContent || "" };
   }
 
   function applyWeatherOnlySafety() {
-    if (beachKey() === "haeundae") return;
+    if (isHaeundae() || meta().ripCode) return;
     const { temp, rain, wind, desc } = weatherValues();
     const light = document.querySelector("#safetyIndexLight");
     const label = document.querySelector("#safetyIndexLabel");
@@ -71,241 +305,247 @@
     const summary = document.querySelector("#conditionSummary");
     const rip = document.querySelector("#conditionRip");
     if (!light || !label || !reason || !summary || !rip) return;
-
-    rip.innerHTML = "<b>이안류</b> · 이 해변의 공식 이안류 연동은 검증 후 추가합니다.";
+    rip.innerHTML = "<b>이안류</b> · 국립해양조사원 이안류 지수 공식 제공 해수욕장 목록에 현재 이 해변은 포함되어 있지 않습니다.";
     if ([temp, rain, wind].some((value) => value === null)) {
-      light.textContent = "⚪";
-      label.textContent = "기상 확인 중";
-      reason.textContent = "선택한 해변의 현재 날씨를 불러온 뒤 기상 기준 참고지수를 표시합니다.";
-      summary.textContent = "현재 날씨를 확인하고 있어요. 이안류·조석은 공식 지점 검증 후 단계적으로 연결합니다.";
-      return;
+      light.textContent = "⚪"; label.textContent = "기상 확인 중"; reason.textContent = "현재 날씨를 불러온 뒤 기상 기준 참고지수를 표시합니다."; return;
     }
-
     const severe = /뇌우|강한 비|강한 소나기|우박/.test(desc) || wind >= 35 || rain >= 10;
     const caution = wind >= 20 || rain >= 2 || temp >= 34;
     if (severe) {
-      light.textContent = "🔴";
-      label.textContent = "기상 위험";
-      reason.textContent = "강한 비·바람 등 기상 위험요소가 감지됐어요. 공식 해양정보와 현장 통제를 함께 확인하세요.";
-      summary.textContent = "현재 기상 조건만으로도 물놀이를 권하기 어려워요. 이안류·조석 공식 연동 전까지 현장 안전요원 안내를 우선하세요.";
+      light.textContent = "🔴"; label.textContent = "기상 위험"; reason.textContent = "강한 비·바람 등 기상 위험요소가 감지됐어요. 현장 통제와 안전요원 안내를 우선하세요.";
+      summary.textContent = "현재 기상 조건만으로도 물놀이를 권하기 어려워요. 공식 이안류 지수가 제공되지 않는 해변이므로 현장 파도와 안전요원 안내를 더 중요하게 확인하세요.";
     } else if (caution) {
-      light.textContent = "🟡";
-      label.textContent = "기상 주의";
-      reason.textContent = "바람·강수 또는 더위에 주의가 필요해요. 이 해변의 이안류 공식 연동은 검증 후 추가됩니다.";
-      summary.textContent = "현재 날씨에는 주의가 필요한 요소가 있어요. 무리한 물놀이는 피하고 현장 파도와 통제 여부를 확인하세요.";
+      light.textContent = "🟡"; label.textContent = "기상 주의"; reason.textContent = "바람·강수 또는 더위에 주의가 필요해요. 현장 파도와 통제 여부를 함께 확인하세요.";
+      summary.textContent = "현재 날씨에는 주의가 필요한 요소가 있어요. 무리한 물놀이는 피하고 현장 안전요원 안내를 확인하세요.";
     } else {
-      light.textContent = "🟢";
-      label.textContent = "기상 양호";
-      reason.textContent = "현재 기상 조건은 비교적 안정적입니다. 이안류·조석은 아직 이 해변의 공식 지점 검증 전입니다.";
-      summary.textContent = "현재 기상 조건은 비교적 무난해요. 다만 이안류·조석 공식 연동 전이므로 현장 안전요원 안내를 꼭 함께 확인하세요.";
+      light.textContent = "🟢"; label.textContent = "기상 양호"; reason.textContent = "현재 기상 조건은 비교적 안정적입니다. 공식 이안류 지수가 제공되지 않는 해변이므로 현장 상태를 함께 확인하세요.";
+      summary.textContent = "현재 기상 조건은 비교적 무난해요. 다만 이 해변은 공식 이안류 지수가 제공되지 않으므로 현장 파도와 안전요원 안내를 꼭 함께 확인하세요.";
     }
   }
 
-  function syncBeachUI() {
-    const key = beachKey();
+  async function loadOtherRipCurrent(token) {
+    if (isHaeundae()) return;
+    const current = meta();
+    const card = document.querySelector(".rip-current-card");
+    const conditionRip = document.querySelector("#conditionRip");
+    if (!current.ripCode) {
+      if (card) card.hidden = true;
+      latestRipCurrentLevel = "확인불가";
+      applyWeatherOnlySafety();
+      return;
+    }
+    if (card) card.hidden = false;
+    latestRipCurrentLevel = null;
+    document.querySelector(".rip-current-card h3").textContent = `${current.name} 이안류 위험 정보`;
+    document.querySelector("#ripCurrentLight").textContent = "⚪";
+    document.querySelector("#ripCurrentLevel").textContent = "공식 정보 확인 중";
+    document.querySelector("#ripCurrentStatus").textContent = "국립해양조사원 이안류 지수를 불러오고 있어요.";
+    try {
+      const response = await fetch(`${RIP_WORKER_URL}/rip-current?beachCode=${encodeURIComponent(current.ripCode)}`);
+      if (!response.ok) throw new Error(`rip ${response.status}`);
+      const data = await response.json();
+      if (token !== loadToken || key() !== "songjeong") return;
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (!items.length) throw new Error("no rip data");
+      const now = new Date();
+      const sorted = items.map((item) => ({ item, time: ripTimestamp(item) })).filter(({ time }) => time).sort((a, b) => a.time - b.time);
+      const past = sorted.filter(({ time }) => time <= now);
+      const latest = (past.length ? past[past.length - 1] : sorted[sorted.length - 1]) || { item: items[items.length - 1], time: null };
+      const normalized = String(latest.item?.lastScrCn || "관심").trim() || "관심";
+      latestRipCurrentLevel = normalized;
+      const display = ripLevelDisplay(normalized);
+      document.querySelector("#ripCurrentLight").textContent = display.icon;
+      document.querySelector("#ripCurrentLevel").textContent = `${display.label} · ${current.name} 이안류 지수`;
+      document.querySelector("#ripCurrentStatus").textContent = display.message;
+      document.querySelector("#ripCurrentWindow").textContent = describeRiskWindow(items);
+      document.querySelector("#ripCurrentTime").textContent = latest.time ? formatRipTime(latest.time) : "–";
+      document.querySelector("#ripCurrentScore").textContent = latest.item?.lastScr != null ? String(latest.item.lastScr) : "–";
+      document.querySelector("#ripCurrentWave").textContent = latest.item?.wvhgt != null ? `${latest.item.wvhgt} m` : "–";
+      document.querySelector("#ripCurrentWind").textContent = latest.item?.wspd != null ? `${latest.item.wspd} m/s` : "–";
+      if (conditionRip) conditionRip.innerHTML = `<b>이안류</b> · 현재 공식 지수는 ${normalized} 단계입니다.`;
+      updateSafetyIndexFromWeather();
+      updateConditionAnalysis();
+    } catch (error) {
+      if (token !== loadToken) return;
+      latestRipCurrentLevel = "확인불가";
+      document.querySelector("#ripCurrentLight").textContent = "⚠️";
+      document.querySelector("#ripCurrentLevel").textContent = "공식 정보 확인 필요";
+      document.querySelector("#ripCurrentStatus").textContent = "송정 이안류 공식 정보를 불러오지 못했어요. 잠시 후 다시 확인해 주세요.";
+      document.querySelector("#ripCurrentWindow").textContent = "현장 안전요원과 공식 해양정보를 우선 확인하세요.";
+      updateSafetyIndexFromWeather();
+      updateConditionAnalysis();
+    }
+  }
+
+  function updateLocationUI() {
     const current = meta();
     const point = activePoint();
-    const isHaeundae = key === "haeundae";
+    const address = selectedGuideAddress ? `${selectedGuideAddress} 안내격자` : "지도 위치";
+    const selectedAddress = document.querySelector("#selectedAddress");
+    const panelAddress = document.querySelector("#panelAddress");
+    const reportAddress = document.querySelector("#reportAddress");
+    if (!isHaeundae()) {
+      if (selectedAddress) selectedAddress.innerHTML = `${address} <em>${current.name}</em>`;
+      if (panelAddress) panelAddress.innerHTML = `${address} <small>· 10m 안내격자</small>`;
+      const desc = document.querySelector(".location-card p");
+      if (desc) desc.textContent = `${current.name} · ${formatPoint(point)}`;
+      if (reportAddress) reportAddress.textContent = `${current.name} · ${address} · ${formatPoint(point)}`;
+    }
+  }
 
+  function syncUI() {
+    const current = meta();
+    const other = !isHaeundae();
     document.title = `해변가이드 | ${current.name} 안전 지도`;
     const panelTitle = document.querySelector(".panel-head h2");
     if (panelTitle) panelTitle.textContent = `${current.name} 안전 안내`;
-
     const panelLead = document.querySelector(".panel-head > p:not(.tag)");
-    if (panelLead) panelLead.textContent = isHaeundae
-      ? "만남 위치, 내 위치, 접근성 시설을 지도에서 바로 확인하세요."
-      : "지도, GPS, 현재 날씨와 기상 안전정보를 확인하세요. 검증이 필요한 해양·시설 정보는 추측해서 표시하지 않습니다.";
-
-    const locationCard = document.querySelector(".location-card");
-    if (locationCard) {
-      const title = locationCard.querySelector("h3");
-      const desc = locationCard.querySelector("p");
-      const caption = locationCard.querySelector("span");
-      if (isHaeundae) {
-        if (caption) caption.textContent = "내가 선택한 장소";
-        if (desc) desc.textContent = "해운대해수욕장 모래사장";
-      } else {
-        if (caption) caption.textContent = "지도에서 선택한 위치";
-        if (title) title.innerHTML = `${current.name} <small>· 좌표 위치</small>`;
-        if (desc) desc.textContent = formatPoint(point);
-      }
-    }
-
-    const selectedAddress = document.querySelector("#selectedAddress");
-    const copyButton = document.querySelector("#copyAddress");
-    if (!isHaeundae && selectedAddress) selectedAddress.innerHTML = `${current.name} <em>위치</em>`;
-    if (copyButton) copyButton.textContent = isHaeundae ? "주소 복사" : "위치 복사";
-
-    const locateButton = document.querySelector("#locateMe");
-    if (locateButton && !locateButton.disabled) locateButton.innerHTML = isHaeundae ? "내 위치로 격자 찾기 <span>⌖</span>" : "내 현재 위치 지도에서 확인 <span>⌖</span>";
-
-    const reportAddress = document.querySelector("#reportAddress");
-    if (!isHaeundae && reportAddress) reportAddress.textContent = `${current.name} · ${formatPoint(point)}`;
-
+    if (panelLead) panelLead.textContent = other
+      ? "10m 안내격자, GPS, 날씨, 공개 지도 시설과 제공 가능한 공식 해양안전 정보를 확인하세요."
+      : "만남 위치, 내 위치, 접근성 시설을 지도에서 바로 확인하세요.";
+    const locate = document.querySelector("#locateMe");
+    if (locate && !locate.disabled) locate.innerHTML = other ? "내 현재 위치 지도에서 확인 <span>⌖</span>" : "내 위치로 격자 찾기 <span>⌖</span>";
+    const copy = document.querySelector("#copyAddress");
+    if (copy) copy.textContent = other ? "위치 복사" : "주소 복사";
     const reportHelp = document.querySelector(".missing-child-group .report-title p");
-    if (reportHelp) reportHelp.textContent = isHaeundae
-      ? "선택한 격자를 중심으로 수색 범위를 지도에 표시합니다."
-      : "지도에서 선택한 지점을 중심으로 임시 수색 위치를 표시합니다.";
-
+    if (reportHelp) reportHelp.textContent = other ? "선택한 10m 안내격자 또는 지도 지점을 중심으로 수색 위치를 표시합니다." : "선택한 격자를 중심으로 수색 범위를 지도에 표시합니다.";
     const reportButton = document.querySelector("#reportForm .report-button");
-    if (reportButton) reportButton.textContent = isHaeundae ? "지도에 수색 위치 표시하기" : "선택 지점을 수색 위치로 표시하기";
-
-    const facilityGroup = document.querySelector(".facility-group");
-    if (facilityGroup) {
-      const note = ensureStatusNote(facilityGroup, "multi-beach-facility-note");
-      if (note) {
-        note.hidden = isHaeundae;
-        note.textContent = `${current.name}의 편의·접근성 시설 좌표는 현장 검증 후 추가합니다. 현재는 검증된 해운대 시설만 지도에 표시합니다.`;
-      }
-      facilityGroup.querySelectorAll("button").forEach((button) => {
-        button.disabled = !isHaeundae;
-        if (!isHaeundae) button.setAttribute("aria-disabled", "true"); else button.removeAttribute("aria-disabled");
-      });
-    }
-
-    const ripCard = document.querySelector(".rip-current-card");
-    if (ripCard) ripCard.hidden = !current.ripCurrent;
-
-    const tideCard = document.querySelector(".tide-card");
-    if (tideCard) {
-      const note = ensureStatusNote(tideCard, "multi-beach-tide-note");
-      if (note) {
-        note.hidden = isHaeundae;
-        note.textContent = `${current.name}의 공식 조석 예보지점은 아직 검증 중입니다. 확인되지 않은 지점의 조석값을 대신 표시하지 않습니다.`;
-      }
-    }
-
+    if (reportButton) reportButton.textContent = other ? "선택 지점을 수색 위치로 표시하기" : "지도에 수색 위치 표시하기";
     const indexNote = document.querySelector(".safety-index-note");
-    if (indexNote) indexNote.textContent = isHaeundae
+    if (indexNote && other) indexNote.textContent = current.ripCode
       ? "기온·강수·바람과 국립해양조사원 공식 이안류 지수를 함께 반영한 참고지수입니다. 현장 통제와 안전요원 안내를 우선하세요."
-      : "현재는 선택한 해변의 기온·강수·바람을 반영한 기상 참고지수입니다. 이안류·조석 공식 지점 검증이 끝나면 종합지수에 추가합니다.";
-
-    const meetText = document.querySelector(".meet-card > p:not(.tag)");
-    if (meetText) meetText.textContent = isHaeundae
-      ? "선택한 구역과 지도 링크를 친구에게 바로 보냅니다."
-      : "지도에서 선택한 위치 좌표와 해변 이름을 친구에게 바로 보냅니다.";
-
-    if (!isHaeundae) applyWeatherOnlySafety();
+      : "현재는 기온·강수·바람을 반영한 기상 참고지수입니다. 공식 이안류 지수가 제공되지 않는 해변에서는 현장 안전요원 안내를 우선하세요.";
+    const tideGroup = document.querySelector(".tide-card");
+    if (tideGroup) {
+      const note = ensureNote(tideGroup, "multi-beach-tide-note");
+      if (note) { note.hidden = !other; note.textContent = `${current.name}의 공식 조석 예보지점은 아직 검증 중입니다. 확인되지 않은 지점 값을 대신 표시하지 않습니다.`; }
+    }
+    updateFacilityNote();
+    updateGridNote(guideGridOverlays.length);
+    updateLocationUI();
+    if (other && !current.ripCode) applyWeatherOnlySafety();
   }
 
-  function markPoint(point, title) {
-    if (!point || !kakaoMap || !window.kakao?.maps) return;
+  function markSearchPoint(point, title) {
+    if (!point || !kakaoMap) return;
+    clearSearchPoint();
     const position = new window.kakao.maps.LatLng(point.lat, point.lng);
-    if (searchMarker) searchMarker.setMap(null);
-    if (searchCircle) searchCircle.setMap(null);
     searchMarker = new window.kakao.maps.Marker({ map: kakaoMap, position, title });
     searchCircle = new window.kakao.maps.Circle({ map: kakaoMap, center: position, radius: 35, strokeWeight: 2, strokeColor: "#d93636", strokeOpacity: 0.9, strokeStyle: "shortdash", fillColor: "#e74c4c", fillOpacity: 0.1 });
   }
 
-  function handleNonHaeundaeLocate(event) {
-    if (beachKey() === "haeundae") return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
+  function handleLocate(event) {
+    if (isHaeundae()) return;
+    event.preventDefault(); event.stopImmediatePropagation();
     const button = event.currentTarget;
     if (!navigator.geolocation) { setNotice("이 기기에서는 GPS 위치 기능을 사용할 수 없어요."); return; }
-    button.disabled = true;
-    button.textContent = "현재 위치를 확인하고 있어요…";
+    button.disabled = true; button.textContent = "현재 위치를 확인하고 있어요…";
     navigator.geolocation.getCurrentPosition(({ coords }) => {
       selectedPoint = { lat: coords.latitude, lng: coords.longitude };
       const position = new window.kakao.maps.LatLng(selectedPoint.lat, selectedPoint.lng);
       if (myLocationMarker) myLocationMarker.setMap(null);
       myLocationMarker = new window.kakao.maps.Marker({ map: kakaoMap, position, title: "내 현재 위치" });
       kakaoMap.panTo(position);
+      button.disabled = false;
+      updateLocationUI();
       setNotice(`${meta().name} 주변에서 현재 GPS 위치를 표시했어요. 정확도는 약 ${Math.round(coords.accuracy)}m예요.`);
-      button.disabled = false;
-      syncBeachUI();
     }, () => {
-      button.disabled = false;
-      button.innerHTML = "내 현재 위치 지도에서 확인 <span>⌖</span>";
+      button.disabled = false; button.innerHTML = "내 현재 위치 지도에서 확인 <span>⌖</span>";
       setNotice("위치 권한이 필요해요. 브라우저에서 위치 사용을 허용해 주세요.");
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
   }
 
-  async function handleNonHaeundaeShare(event) {
-    if (beachKey() === "haeundae") return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const current = meta();
-    const point = activePoint();
-    const message = `${current.name} 만남 위치: ${formatPoint(point)}\n${location.href}`;
+  async function handleShare(event) {
+    if (isHaeundae()) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    const current = meta(); const point = activePoint();
+    const address = selectedGuideAddress ? `${selectedGuideAddress} 안내격자` : "지도 위치";
+    const message = `${current.name} 만남 위치: ${address} · ${formatPoint(point)}\n${location.href}`;
     const result = document.querySelector("#shareResult");
     try {
       if (navigator.share) await navigator.share({ title: `${current.name} 만남 위치`, text: message, url: location.href });
       else await navigator.clipboard.writeText(message);
-      result.hidden = false;
-      result.textContent = navigator.share ? "공유 창을 열었어요." : "해변 이름과 위치 좌표를 복사했어요.";
-    } catch (error) {
-      if (error.name !== "AbortError") { result.hidden = false; result.textContent = "공유하지 못했어요. 다시 시도해 주세요."; }
-    }
+      result.hidden = false; result.textContent = navigator.share ? "공유 창을 열었어요." : "해변 이름·격자·위치 좌표를 복사했어요.";
+    } catch (error) { if (error.name !== "AbortError") { result.hidden = false; result.textContent = "공유하지 못했어요. 다시 시도해 주세요."; } }
   }
 
-  async function handleNonHaeundaeCopy(event) {
-    if (beachKey() === "haeundae") return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const text = `${meta().name} ${formatPoint(activePoint())}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      setNotice(`${meta().name} 위치 좌표를 복사했어요.`);
-    } catch {
-      setNotice(`현재 위치: ${text}`);
-    }
+  async function handleCopy(event) {
+    if (isHaeundae()) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    const current = meta(); const point = activePoint();
+    const address = selectedGuideAddress ? `${selectedGuideAddress} 안내격자` : "지도 위치";
+    const text = `${current.name} ${address} ${formatPoint(point)}`;
+    try { await navigator.clipboard.writeText(text); setNotice(`${current.name} 위치를 복사했어요.`); }
+    catch { setNotice(`현재 위치: ${text}`); }
   }
 
-  function handleNonHaeundaeReport(event) {
-    if (beachKey() === "haeundae") return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
+  function handleReport(event) {
+    if (isHaeundae()) return;
+    event.preventDefault(); event.stopImmediatePropagation();
     const form = event.currentTarget;
     const name = form.querySelector("#childName")?.value.trim();
     const description = form.querySelector("#childDescription")?.value.trim();
     const point = activePoint();
-    if (!point) return;
-    markPoint(point, `미아 마지막 목격 위치 · ${name || "이름 미입력"}`);
+    markSearchPoint(point, `미아 마지막 목격 위치 · ${name || "이름 미입력"}`);
     const result = form.querySelector("#reportResult");
     result.hidden = false;
-    result.textContent = `${meta().name} ${formatPoint(point)}에 수색 보조 위치를 표시했어요. 이 표시는 신고 접수가 아닙니다.`;
-    setNotice(`미아 수색 보조 위치를 표시했어요. 112 또는 현장 안전요원에게 위치 좌표와 특징을 함께 알려주세요.${description ? ` 특징: ${description}` : ""}`);
+    result.textContent = `${meta().name} ${selectedGuideAddress ? `${selectedGuideAddress} 안내격자` : formatPoint(point)}에 수색 보조 위치를 표시했어요. 이 표시는 신고 접수가 아닙니다.`;
+    setNotice(`미아 수색 보조 위치를 표시했어요. 112 또는 현장 안전요원에게 위치와 특징을 함께 알려주세요.${description ? ` 특징: ${description}` : ""}`);
     form.reset();
+  }
+
+  function handleFacilityToggle(event, hygiene) {
+    if (isHaeundae()) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (hygiene) hygieneVisibleOther = !hygieneVisibleOther; else facilitiesVisibleOther = !facilitiesVisibleOther;
+    renderOtherFacilities();
+    event.currentTarget.classList.toggle("active", hygiene ? hygieneVisibleOther : facilitiesVisibleOther);
+    event.currentTarget.innerHTML = hygiene
+      ? `${hygieneVisibleOther ? "지도에서 씻는 시설 숨기기" : "지도에서 씻는 시설 표시하기"} <span>⌖</span>`
+      : `${facilitiesVisibleOther ? "지도에서 편의·접근성 시설 숨기기" : "지도에서 편의·접근성 시설 보기"} <span>›</span>`;
+  }
+
+  async function handleBeachChange() {
+    const token = ++loadToken;
+    clearGuideGrid(); clearOtherFacilities(); clearSearchPoint(); selectedPoint = null; selectedGuideAddress = null;
+    setTimeout(async () => {
+      if (token !== loadToken) return;
+      selectedPoint = mapCenterPoint();
+      syncUI();
+      if (isHaeundae()) return;
+      await Promise.allSettled([loadGuideGrid(token), loadOtherFacilities(token), loadOtherRipCurrent(token)]);
+      if (token === loadToken) syncUI();
+    }, 80);
   }
 
   function init() {
     const select = document.querySelector("#beachSelect");
-    const locate = document.querySelector("#locateMe");
-    const share = document.querySelector("#shareMeeting");
-    const copy = document.querySelector("#copyAddress");
-    const report = document.querySelector("#reportForm");
-
-    select?.addEventListener("change", () => {
-      selectedPoint = null;
-      setTimeout(() => {
-        selectedPoint = mapCenterPoint();
-        syncBeachUI();
-      }, 0);
-    });
-    locate?.addEventListener("click", handleNonHaeundaeLocate, true);
-    share?.addEventListener("click", handleNonHaeundaeShare, true);
-    copy?.addEventListener("click", handleNonHaeundaeCopy, true);
-    report?.addEventListener("submit", handleNonHaeundaeReport, true);
+    select?.addEventListener("change", handleBeachChange);
+    document.querySelector("#locateMe")?.addEventListener("click", handleLocate, true);
+    document.querySelector("#shareMeeting")?.addEventListener("click", handleShare, true);
+    document.querySelector("#copyAddress")?.addEventListener("click", handleCopy, true);
+    document.querySelector("#reportForm")?.addEventListener("submit", handleReport, true);
+    document.querySelector("#toggleFacilities")?.addEventListener("click", (event) => handleFacilityToggle(event, false), true);
+    document.querySelector("#toggleHygieneFacilities")?.addEventListener("click", (event) => handleFacilityToggle(event, true), true);
 
     if (kakaoMap && window.kakao?.maps) {
       window.kakao.maps.event.addListener(kakaoMap, "click", (mouseEvent) => {
-        if (beachKey() === "haeundae") return;
+        if (isHaeundae()) return;
         selectedPoint = { lat: mouseEvent.latLng.getLat(), lng: mouseEvent.latLng.getLng() };
+        selectedGuideAddress = null;
+        updateLocationUI();
         setNotice(`${meta().name}에서 위치를 선택했어요: ${formatPoint(selectedPoint)}`);
-        syncBeachUI();
       });
     }
 
     const weatherObserver = new MutationObserver(() => {
-      if (beachKey() !== "haeundae") queueMicrotask(() => { applyWeatherOnlySafety(); syncBeachUI(); });
+      if (!isHaeundae() && !meta().ripCode) queueMicrotask(applyWeatherOnlySafety);
     });
-    ["#weatherTemp", "#weatherRain", "#weatherWind", "#weatherDesc", "#tideStatus"].forEach((selector) => {
+    ["#weatherTemp", "#weatherRain", "#weatherWind", "#weatherDesc"].forEach((selector) => {
       const node = document.querySelector(selector);
       if (node) weatherObserver.observe(node, { childList: true, subtree: true, characterData: true });
     });
-
-    syncBeachUI();
+    syncUI();
   }
 
   if (document.readyState === "complete") init();
