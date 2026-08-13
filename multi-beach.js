@@ -319,3 +319,123 @@
 
   if(document.readyState==="complete")init();else window.addEventListener("load",init,{once:true});
 })();
+
+// Weather and marine-safety modal. The existing live cards are moved into the
+// modal, so all existing weather/tide/rip-current update logic keeps working.
+(() => {
+  let activePanel = "overview";
+  const ITEMS = [
+    { key:"weather", icon:"☀️", label:"날씨", selector:".weather-card", desc:"기온 · 강수 · 바람" },
+    { key:"safety", icon:"🚦", label:"안전지수", selector:".safety-index-card", desc:"현재 조건 종합 판정" },
+    { key:"condition", icon:"🌊", label:"해변상태", selector:".condition-card", desc:"기상·조석·이안류 해석" },
+    { key:"rip", icon:"⚠️", label:"이안류", selector:".rip-current-card", desc:"공식 이안류 위험 정보" },
+    { key:"tide", icon:"↕️", label:"조석", selector:".tide-card", desc:"만조 · 간조 시각" }
+  ];
+
+  function addStyles(){
+    if(document.querySelector("#safetyModalStyles"))return;
+    const style=document.createElement("style");
+    style.id="safetyModalStyles";
+    style.textContent=`
+      .environment-group{border:0!important;background:transparent!important;overflow:visible!important}
+      .environment-group>summary{display:none!important}
+      .environment-group .environment-body{padding:0!important}
+      .safety-launch-card{border:1px solid #bddde4;border-radius:15px;background:#f7fcfd;padding:15px}
+      .safety-launch-card .tag{margin:0;color:#087698;font-size:10px;font-weight:900;letter-spacing:.14em}
+      .safety-launch-card h3{margin:6px 0 5px;color:#123b50;font-size:16px}
+      .safety-launch-card p{margin:0;color:#667f87;font-size:10px;line-height:1.55}
+      .safety-launch-button{width:100%;margin-top:11px;border:0;border-radius:11px;padding:12px;background:#0b7896;color:#fff;font-weight:900;font-size:12px;cursor:pointer}
+      .safety-modal-overlay{position:fixed;inset:0;z-index:99990;display:grid;place-items:center;padding:16px;background:rgba(7,28,39,.48);backdrop-filter:blur(2px)}
+      .safety-modal-overlay[hidden]{display:none!important}
+      .safety-modal{position:relative;width:min(500px,calc(100vw - 28px));max-height:min(86vh,780px);overflow:auto;box-sizing:border-box;border-radius:18px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:20px}
+      .safety-modal-close{position:absolute;right:11px;top:11px;width:34px;height:34px;border:0;border-radius:50%;background:#f1f5f6;color:#284c58;font-size:21px;line-height:1;cursor:pointer}
+      .safety-modal-head .tag{margin:0 42px 5px 0;color:#087698;font-size:10px;font-weight:900;letter-spacing:.14em}
+      .safety-modal-head h2{margin:0 42px 6px 0;color:#123b50;font-size:20px}
+      .safety-modal-head p{margin:0;color:#667f87;font-size:10px;line-height:1.55}
+      .safety-choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:15px}
+      .safety-choice{border:1px solid #d5e2e6;border-radius:12px;background:#fff;padding:12px;text-align:left;cursor:pointer}
+      .safety-choice:hover{background:#f7fbfc}.safety-choice.active{border-color:#69b6c8;background:#eef9fb}
+      .safety-choice b{display:block;color:#173f50;font-size:12px}.safety-choice span{display:block;margin-top:4px;color:#70868d;font-size:9px;line-height:1.4}
+      .safety-choice-icon{font-size:18px;margin-bottom:5px}
+      .safety-modal-content{margin-top:14px}
+      .safety-modal-content>.weather-card,.safety-modal-content>.safety-index-card,.safety-modal-content>.condition-card,.safety-modal-content>.rip-current-card,.safety-modal-content>.tide-card{margin:0!important}
+      .safety-modal-back{width:100%;margin-top:12px;border:1px solid #bfd5dc;border-radius:10px;padding:10px;background:#fff;color:#315968;font-weight:800;cursor:pointer}
+      .safety-modal-helper{margin:12px 0 0;padding:9px;border-radius:9px;background:#f6fafb;color:#6a8087;font-size:9px;line-height:1.5}
+      @media(max-width:520px){.safety-modal{max-height:90vh;padding:17px}.safety-choice-grid{grid-template-columns:1fr}.safety-modal-head h2{font-size:18px}}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function setup(){
+    const group=document.querySelector(".environment-group");
+    const body=group?.querySelector(".environment-body");
+    if(!group||!body||document.querySelector("#safetyModalOverlay"))return;
+    addStyles();
+
+    const liveCards={};
+    ITEMS.forEach(item=>{const el=body.querySelector(item.selector);if(el)liveCards[item.key]=el;});
+
+    const launch=document.createElement("section");
+    launch.className="safety-launch-card";
+    launch.innerHTML=`<p class="tag">WEATHER · MARINE SAFETY</p><h3>기상·해양 안전 정보</h3><p>날씨, 안전지수, 해변상태, 이안류, 조석 중 필요한 정보만 선택해서 확인하세요.</p><button id="openSafetyModal" class="safety-launch-button" type="button">안전 정보 선택해서 보기</button>`;
+    body.innerHTML="";
+    body.appendChild(launch);
+
+    const overlay=document.createElement("div");
+    overlay.id="safetyModalOverlay";
+    overlay.className="safety-modal-overlay";
+    overlay.hidden=true;
+    overlay.setAttribute("aria-hidden","true");
+    overlay.innerHTML=`<section class="safety-modal" role="dialog" aria-modal="true" aria-labelledby="safetyModalTitle"><button id="closeSafetyModal" class="safety-modal-close" type="button" aria-label="안전 정보 창 닫기">×</button><div id="safetyModalInner"></div></section>`;
+    document.body.appendChild(overlay);
+
+    const stash=document.createElement("div");
+    stash.id="safetyLiveCardStash";
+    stash.hidden=true;
+    Object.values(liveCards).forEach(card=>stash.appendChild(card));
+    document.body.appendChild(stash);
+
+    function beachLabel(){return document.querySelector("#beachSelect")?.selectedOptions?.[0]?.textContent?.split(" · ")[0]||"선택한 해변";}
+
+    function renderChoice(){
+      activePanel="overview";
+      const inner=document.querySelector("#safetyModalInner");
+      inner.innerHTML=`<div class="safety-modal-head"><p class="tag">WEATHER · MARINE SAFETY</p><h2 id="safetyModalTitle">어떤 정보를 확인할까요?</h2><p>${beachLabel()}의 필요한 안전 정보만 골라서 확인할 수 있습니다.</p></div><div class="safety-choice-grid">${ITEMS.map(item=>`<button class="safety-choice" type="button" data-safety-view="${item.key}"><div class="safety-choice-icon">${item.icon}</div><b>${item.label}</b><span>${item.desc}</span></button>`).join("")}</div><p class="safety-modal-helper">정보는 기존과 동일하게 실시간으로 갱신됩니다. 실제 입수·통제 여부는 현장 안전요원 안내를 우선하세요.</p>`;
+      inner.querySelectorAll("[data-safety-view]").forEach(btn=>btn.addEventListener("click",()=>renderPanel(btn.dataset.safetyView)));
+    }
+
+    function renderPanel(key){
+      const item=ITEMS.find(x=>x.key===key);
+      const card=liveCards[key];
+      if(!item||!card)return;
+      activePanel=key;
+      const inner=document.querySelector("#safetyModalInner");
+      inner.innerHTML=`<div class="safety-modal-head"><p class="tag">${item.label.toUpperCase()}</p><h2 id="safetyModalTitle">${item.label}</h2><p>${beachLabel()}의 ${item.desc} 정보를 확인합니다.</p></div><div id="safetyModalContent" class="safety-modal-content"></div><button id="safetyModalBack" class="safety-modal-back" type="button">← 다른 안전 정보 선택</button>`;
+      inner.querySelector("#safetyModalContent").appendChild(card);
+      inner.querySelector("#safetyModalBack").addEventListener("click",()=>{stash.appendChild(card);renderChoice();});
+    }
+
+    function open(){
+      renderChoice();
+      overlay.hidden=false;
+      overlay.setAttribute("aria-hidden","false");
+      document.body.style.overflow="hidden";
+    }
+
+    function close(){
+      if(activePanel!=="overview"&&liveCards[activePanel])stash.appendChild(liveCards[activePanel]);
+      overlay.hidden=true;
+      overlay.setAttribute("aria-hidden","true");
+      document.body.style.overflow="";
+      activePanel="overview";
+    }
+
+    document.querySelector("#openSafetyModal")?.addEventListener("click",open);
+    document.querySelector("#closeSafetyModal")?.addEventListener("click",close);
+    overlay.addEventListener("click",event=>{if(event.target===overlay)close();});
+    document.addEventListener("keydown",event=>{if(event.key==="Escape"&&!overlay.hidden)close();});
+    document.querySelector("#beachSelect")?.addEventListener("change",()=>{if(!overlay.hidden)renderChoice();});
+  }
+
+  if(document.readyState==="complete")setup();else window.addEventListener("load",setup,{once:true});
+})();
