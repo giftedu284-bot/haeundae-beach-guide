@@ -122,5 +122,6 @@
     const weatherWatch=new MutationObserver(()=>{updateSafetyIndexFromWeather();updateConditionAnalysis();});["#weatherTemp","#weatherRain","#weatherWind","#weatherDesc","#tideTimes","#tideStatus"].forEach(selector=>{const node=document.querySelector(selector);if(node)weatherWatch.observe(node,{childList:true,subtree:true,characterData:true,attributes:true});});document.querySelector("#beachSelect")?.addEventListener("change",loadRipCurrent);updateSafetyIndexFromWeather();updateConditionAnalysis();loadRipCurrent();
   </script>
   <script src="multi-beach.js"></script>
+  <script src="missing-child.js"></script>
 </body>
 </html>
