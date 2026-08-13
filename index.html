@@ -20,6 +20,13 @@
     .safety-index-main strong{display:block;font-size:19px}
     .safety-index-main span{display:block;margin-top:3px;color:#60787e;font-size:11px;line-height:1.45}
     .safety-index-note{margin:10px 0 0;color:#71868b;font-size:10px;line-height:1.5}
+    .condition-card{margin-top:18px;padding:16px;border:1px solid #cfe0eb;border-radius:14px;background:linear-gradient(135deg,#f8fbff,#f1f8fb)}
+    .condition-card h3{margin:6px 0 10px;font-size:16px}
+    .condition-summary{margin:0;padding:12px;border-radius:10px;background:#fff;color:#284c5c;font-size:13px;font-weight:700;line-height:1.6}
+    .condition-points{display:grid;gap:7px;margin-top:10px}
+    .condition-points p{margin:0;padding:9px 10px;border-radius:8px;background:#fff;color:#60787e;font-size:11px;line-height:1.5}
+    .condition-points b{color:#163747}
+    .condition-note{margin:10px 0 0;color:#71868b;font-size:10px;line-height:1.5}
   </style>
 </head>
 <body>
@@ -68,6 +75,17 @@
           <div><strong id="safetyIndexLabel">계산 중</strong><span id="safetyIndexReason">현재 기상 조건을 확인하고 있어요.</span></div>
         </div>
         <p class="safety-index-note">기온·강수·바람 등 현재 기상정보를 이용한 참고지수입니다. 이안류·파고·현장 통제 여부는 반영하지 않으므로 현장 안전요원과 공식 안내를 우선하세요.</p>
+      </section>
+      <section class="condition-card" aria-live="polite">
+        <p class="tag">AT A GLANCE</p>
+        <h3>한눈에 보는 해변 상태</h3>
+        <p id="conditionSummary" class="condition-summary">날씨와 조석 정보를 함께 확인하고 있어요.</p>
+        <div class="condition-points">
+          <p id="conditionWind"><b>바람</b> · 확인 중</p>
+          <p id="conditionRain"><b>비</b> · 확인 중</p>
+          <p id="conditionTide"><b>조석</b> · 공식 정보를 확인 중</p>
+        </div>
+        <p class="condition-note">수치를 이해하기 쉽게 풀어쓴 참고 설명입니다. 실제 입수·수영 여부는 파도, 이안류, 현장 통제와 안전요원 안내를 함께 확인하세요.</p>
       </section>
       <section class="tide-card">
         <p class="tag">TIDE INFORMATION</p>
@@ -134,48 +152,106 @@
     });
     renderFacilities();
 
+    function parseNumber(selector) {
+      const value = parseFloat(document.querySelector(selector)?.textContent || "");
+      return Number.isFinite(value) ? value : null;
+    }
+
     function updateSafetyIndexFromWeather() {
-      const tempText = document.querySelector("#weatherTemp")?.textContent || "";
-      const rainText = document.querySelector("#weatherRain")?.textContent || "";
-      const windText = document.querySelector("#weatherWind")?.textContent || "";
+      const temp = parseNumber("#weatherTemp");
+      const rain = parseNumber("#weatherRain");
+      const wind = parseNumber("#weatherWind");
       const descText = document.querySelector("#weatherDesc")?.textContent || "";
       const light = document.querySelector("#safetyIndexLight");
       const label = document.querySelector("#safetyIndexLabel");
       const reason = document.querySelector("#safetyIndexReason");
       if (!light || !label || !reason) return;
-
-      const temp = parseFloat(tempText);
-      const rain = parseFloat(rainText);
-      const wind = parseFloat(windText);
-      if (![temp, rain, wind].every(Number.isFinite)) {
-        light.textContent = "⚪";
-        label.textContent = "확인 중";
-        reason.textContent = "날씨 정보가 준비되면 자동으로 표시합니다.";
-        return;
+      if ([temp, rain, wind].some((value) => value === null)) {
+        light.textContent = "⚪"; label.textContent = "확인 중"; reason.textContent = "날씨 정보가 준비되면 자동으로 표시합니다."; return;
       }
-
       const severeWeather = /뇌우|강한 비|강한 소나기|우박/.test(descText);
       if (severeWeather || wind >= 35 || rain >= 10) {
-        light.textContent = "🔴";
-        label.textContent = "위험";
-        reason.textContent = "강한 비·바람 또는 위험 기상 조건이 감지됐어요. 물놀이를 피하고 현장 안내를 확인하세요.";
+        light.textContent = "🔴"; label.textContent = "위험"; reason.textContent = "강한 비·바람 또는 위험 기상 조건이 감지됐어요. 물놀이를 피하고 현장 안내를 확인하세요.";
       } else if (wind >= 20 || rain >= 2 || temp >= 34) {
-        light.textContent = "🟡";
-        label.textContent = "주의";
-        reason.textContent = "바람·강수 또는 더위에 주의가 필요해요. 현장 상태를 확인하고 무리한 물놀이는 피하세요.";
+        light.textContent = "🟡"; label.textContent = "주의"; reason.textContent = "바람·강수 또는 더위에 주의가 필요해요. 현장 상태를 확인하고 무리한 물놀이는 피하세요.";
       } else {
-        light.textContent = "🟢";
-        label.textContent = "양호";
-        reason.textContent = "현재 기상 조건은 비교적 안정적입니다. 이안류·파고·현장 통제 여부는 별도로 확인하세요.";
+        light.textContent = "🟢"; label.textContent = "양호"; reason.textContent = "현재 기상 조건은 비교적 안정적입니다. 이안류·파고·현장 통제 여부는 별도로 확인하세요.";
       }
     }
 
-    const weatherWatch = new MutationObserver(updateSafetyIndexFromWeather);
-    ["#weatherTemp", "#weatherRain", "#weatherWind", "#weatherDesc"].forEach((selector) => {
+    function tideMinutes(text) {
+      const match = String(text).match(/(\d{1,2}):(\d{2})/);
+      return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+    }
+
+    function describeNearestTide() {
+      const nodes = [...document.querySelectorAll("#tideTimes span")];
+      if (!nodes.length || document.querySelector("#tideTimes")?.hidden) return "공식 만조·간조 시각이 확인되면 현재와의 시간 차이를 알려드려요.";
+      const now = new Date();
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const tides = nodes.map((node) => {
+        const kind = node.querySelector("b")?.textContent?.trim() || "조석";
+        const minutes = tideMinutes(node.textContent);
+        return minutes === null ? null : { kind, minutes, text: node.textContent.trim() };
+      }).filter(Boolean);
+      if (!tides.length) return "조석 시각을 해석하는 중입니다.";
+      let nearest = tides[0];
+      let bestDiff = Math.abs(nearest.minutes - nowMinutes);
+      tides.slice(1).forEach((item) => {
+        const diff = Math.abs(item.minutes - nowMinutes);
+        if (diff < bestDiff) { nearest = item; bestDiff = diff; }
+      });
+      const hours = Math.floor(bestDiff / 60);
+      const mins = bestDiff % 60;
+      const timeText = hours ? `${hours}시간 ${mins}분` : `${mins}분`;
+      if (bestDiff <= 60) return `${nearest.kind} 시각이 약 ${timeText} 이내예요. 물가 가까이 머문다면 수위 변화를 더 자주 확인하세요.`;
+      if (bestDiff <= 180) return `가장 가까운 ${nearest.kind}까지 약 ${timeText} 정도예요. 해변 가장자리에서는 수위 변화를 염두에 두세요.`;
+      return `가장 가까운 ${nearest.kind}까지 약 ${timeText} 정도 남아 있어요.`;
+    }
+
+    function updateConditionAnalysis() {
+      const temp = parseNumber("#weatherTemp");
+      const rain = parseNumber("#weatherRain");
+      const wind = parseNumber("#weatherWind");
+      const desc = document.querySelector("#weatherDesc")?.textContent || "";
+      const summary = document.querySelector("#conditionSummary");
+      const windEl = document.querySelector("#conditionWind");
+      const rainEl = document.querySelector("#conditionRain");
+      const tideEl = document.querySelector("#conditionTide");
+      if (!summary || !windEl || !rainEl || !tideEl) return;
+
+      if (wind === null) windEl.innerHTML = "<b>바람</b> · 확인 중";
+      else if (wind < 10) windEl.innerHTML = `<b>바람</b> · ${Math.round(wind)} km/h로 약한 편이에요. 체감상 바람 부담이 크지 않은 수준입니다.`;
+      else if (wind < 20) windEl.innerHTML = `<b>바람</b> · ${Math.round(wind)} km/h로 조금 느껴지는 편이에요. 가벼운 물놀이라도 현장 파도 상태를 함께 보세요.`;
+      else if (wind < 35) windEl.innerHTML = `<b>바람</b> · ${Math.round(wind)} km/h로 강한 편이에요. 물 위 활동과 어린이 물놀이는 특히 주의하세요.`;
+      else windEl.innerHTML = `<b>바람</b> · ${Math.round(wind)} km/h로 매우 강합니다. 물놀이를 피하고 현장 통제 여부를 확인하세요.`;
+
+      if (rain === null) rainEl.innerHTML = "<b>비</b> · 확인 중";
+      else if (rain < 0.2) rainEl.innerHTML = `<b>비</b> · 현재 강수량 ${rain} mm로 비 영향은 거의 없는 편입니다.`;
+      else if (rain < 2) rainEl.innerHTML = `<b>비</b> · ${rain} mm의 약한 비가 관측되고 있어요. 시야와 미끄럼에 주의하세요.`;
+      else if (rain < 10) rainEl.innerHTML = `<b>비</b> · ${rain} mm로 비 영향이 뚜렷합니다. 오래 머무르기보다는 상황을 보수적으로 판단하세요.`;
+      else rainEl.innerHTML = `<b>비</b> · ${rain} mm로 강한 비 수준입니다. 물놀이를 피하는 편이 안전합니다.`;
+
+      tideEl.innerHTML = `<b>조석</b> · ${describeNearestTide()}`;
+
+      if ([temp, rain, wind].some((value) => value === null)) {
+        summary.textContent = "날씨와 조석 정보가 모두 준비되면 지금 해변 상태를 쉬운 말로 요약해드려요.";
+        return;
+      }
+      const severe = /뇌우|강한 비|강한 소나기|우박/.test(desc) || wind >= 35 || rain >= 10;
+      const caution = wind >= 20 || rain >= 2 || temp >= 34;
+      if (severe) summary.textContent = "현재는 물놀이를 권하기 어려운 조건이에요. 강한 비나 바람 등 위험 요소가 있어 현장 통제와 안전요원 안내를 우선 확인하세요.";
+      else if (caution) summary.textContent = "현재 해변 이용은 가능해 보여도 주의가 필요한 조건이에요. 바람·비·더위 중 하나 이상이 부담이 될 수 있어 무리한 물놀이는 피하세요.";
+      else summary.textContent = "현재 기상 조건만 보면 비교적 무난한 편이에요. 다만 파도와 이안류는 이 수치만으로 판단할 수 없으니 현장 안내를 꼭 함께 확인하세요.";
+    }
+
+    const weatherWatch = new MutationObserver(() => { updateSafetyIndexFromWeather(); updateConditionAnalysis(); });
+    ["#weatherTemp", "#weatherRain", "#weatherWind", "#weatherDesc", "#tideTimes", "#tideStatus"].forEach((selector) => {
       const node = document.querySelector(selector);
-      if (node) weatherWatch.observe(node, { childList: true, subtree: true, characterData: true });
+      if (node) weatherWatch.observe(node, { childList: true, subtree: true, characterData: true, attributes: true });
     });
     updateSafetyIndexFromWeather();
+    updateConditionAnalysis();
   </script>
 </body>
 </html>
