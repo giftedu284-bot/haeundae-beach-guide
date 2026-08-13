@@ -5,7 +5,9 @@ const TIDE_WORKER_URL = "https://beach-guide-tide-api.chopyoz1207.workers.dev";
 // has been verified with the National Oceanographic Research Institute.
 // DT_0005 is an official Busan observation point. It is only a nearby reference
 // until a Haeundae-specific forecast point is verified with KHOA.
-const TIDE_CONFIG = { observationCode: "DT_0005", verified: false, referenceName: "부산 조위관측소" };
+// The worker is the only source of truth for tide data.  Do not show a
+// prediction unless it contains official, non-empty observation results.
+const TIDE_CONFIG = { observationCode: "DT_0005" };
 const BEACHES = {
   haeundae: { name: "해운대해수욕장", lat: 35.1587, lng: 129.1604, gridReady: true },
   gwangalli: { name: "광안리해수욕장", lat: 35.1532, lng: 129.1186, gridReady: false },
@@ -350,15 +352,18 @@ async function loadTide() {
     if (!response.ok) throw new Error(`tide request failed: ${response.status}`);
     const data = await response.json();
     const items = Array.isArray(data.items) ? data.items : [];
-    if (!TIDE_CONFIG.verified || !items.length) {
-      status.textContent = `${TIDE_CONFIG.referenceName} 기준 연결을 검증하고 있어요. 해운대 전용 예보지점이 확인되기 전에는 만·간조 시각을 표시하지 않습니다.`;
-      updated.textContent = "검증 전의 추측값은 표시하지 않습니다.";
+    const observation = data.observation || {};
+    const stationName = observation.name || "공식 조위관측소";
+    document.querySelector("#tideBeach").textContent = `${beach.name} 인근 조석`;
+    if (!items.length) {
+      status.textContent = "공식 조석예보 응답을 확인하는 중입니다. 실제 관측·예보 시각이 수신되기 전에는 추측값을 표시하지 않습니다.";
+      updated.textContent = "공식 데이터 수신 대기 중";
       return;
     }
-    status.textContent = "국립해양조사원 공식 조석예보";
+    status.textContent = `공식 조석예보 · ${stationName} 기준`;
     times.hidden = false;
     times.innerHTML = items.slice(0, 4).map((item) => `<span><b>${tideKind(item?.hlCode || item?.type || item?.extreme)}</b>${tideTime(item)}${tideHeight(item)}</span>`).join("");
-    updated.textContent = `${data.date || "오늘"} 기준 · 예보지점 ${data.observationCode}`;
+    updated.textContent = `${data.date || "오늘"} 기준 · ${stationName}`;
   } catch (error) {
     status.textContent = "공식 조석 정보를 불러오지 못했어요. 아래 국립해양조사원 링크에서 확인해 주세요.";
     updated.textContent = "네트워크 또는 공식 데이터 서버 상태를 확인해 주세요.";
