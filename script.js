@@ -1,4 +1,9 @@
 const HAEUNDAE = { lat: 35.1587, lng: 129.1604 };
+const TIDE_WORKER_URL = "https://beach-guide-tide-api.chopyoz1207.workers.dev";
+// DT_0018 is the official API documentation sample only. It is deliberately
+// not presented to users as Haeundae until the nearest forecast-point mapping
+// has been verified with the National Oceanographic Research Institute.
+const TIDE_CONFIG = { observationCode: "DT_0018", verified: false };
 const BEACHES = {
   haeundae: { name: "해운대해수욕장", lat: 35.1587, lng: 129.1604, gridReady: true },
   gwangalli: { name: "광안리해수욕장", lat: 35.1532, lng: 129.1186, gridReady: false },
@@ -309,6 +314,54 @@ async function loadWeather() {
     $("#weatherUpdated").textContent = "네트워크를 확인한 뒤 다시 열어 주세요.";
   }
 }
+function tideKind(value) {
+  const text = String(value || "");
+  if (/고|high/i.test(text)) return "만조";
+  if (/저|low/i.test(text)) return "간조";
+  return "조석";
+}
+function tideTime(item) {
+  const value = item?.tphTime || item?.tideTime || item?.fcstTime || item?.time || "";
+  const match = String(value).match(/(\d{2}:?\d{2})$/);
+  return match ? match[1].replace(/(\d{2})(\d{2})$/, "$1:$2") : String(value || "시간 확인 중");
+}
+function tideHeight(item) {
+  const value = item?.tphLevel ?? item?.tideLevel ?? item?.fcstLevel ?? item?.level;
+  return value === undefined || value === null || value === "" ? "" : ` ${value}cm`;
+}
+async function loadTide() {
+  const beach = BEACHES[currentBeachKey] || BEACHES.haeundae;
+  const status = document.querySelector("#tideStatus");
+  const times = document.querySelector("#tideTimes");
+  const updated = document.querySelector("#tideUpdated");
+  document.querySelector("#tideBeach").textContent = `${beach.name} 만조·간조`;
+  times.hidden = true;
+  times.innerHTML = "";
+  updated.textContent = "";
+  if (currentBeachKey !== "haeundae") {
+    status.textContent = "이 해변의 공식 예보지점은 검증 후 추가합니다.";
+    return;
+  }
+  status.textContent = "국립해양조사원 조석 정보를 불러오는 중…";
+  try {
+    const response = await fetch(`${TIDE_WORKER_URL}/tide?obsCode=${encodeURIComponent(TIDE_CONFIG.observationCode)}`);
+    if (!response.ok) throw new Error(`tide request failed: ${response.status}`);
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!TIDE_CONFIG.verified || !items.length) {
+      status.textContent = "공식 조석 서버 연결은 완료됐어요. 해운대 기준 예보지점 코드를 검증한 뒤 만·간조 시각을 표시합니다.";
+      updated.textContent = "추측값은 표시하지 않습니다.";
+      return;
+    }
+    status.textContent = "국립해양조사원 공식 조석예보";
+    times.hidden = false;
+    times.innerHTML = items.slice(0, 4).map((item) => `<span><b>${tideKind(item?.hlCode || item?.type || item?.extreme)}</b>${tideTime(item)}${tideHeight(item)}</span>`).join("");
+    updated.textContent = `${data.date || "오늘"} 기준 · 예보지점 ${data.observationCode}`;
+  } catch (error) {
+    status.textContent = "공식 조석 정보를 불러오지 못했어요. 아래 국립해양조사원 링크에서 확인해 주세요.";
+    updated.textContent = "네트워크 또는 공식 데이터 서버 상태를 확인해 주세요.";
+  }
+}
 function setGuideVisible(visible) {
   document.querySelector("#guideModal").hidden = !visible;
   if (!visible) localStorage.setItem("haeundae-beach-guide-intro-seen", "true");
@@ -318,6 +371,7 @@ function changeBeach(event) {
   if (!kakaoMap || !beach) return;
   currentBeachKey = event.target.value;
   loadWeather();
+  loadTide();
   kakaoMap.setCenter(new window.kakao.maps.LatLng(beach.lat, beach.lng));
   kakaoMap.setLevel(beach.gridReady ? 4 : 5);
   if (beach.gridReady) {
@@ -386,4 +440,4 @@ document.querySelector("#toggleFacilities").addEventListener("click", (event) =>
 document.querySelector("#toggleDeck").addEventListener("click", (event) => { deckVisible = !deckVisible; event.currentTarget.classList.toggle("active", deckVisible); event.currentTarget.innerHTML = `${deckVisible ? "데크길 숨기기" : "데크길 표시하기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
 if (localStorage.getItem("haeundae-beach-guide-intro-seen")) setGuideVisible(false);
-renderGrid(); renderFacilities(); updateAddress(); loadWeather(); initKakaoMap();
+renderGrid(); renderFacilities(); updateAddress(); loadWeather(); loadTide(); initKakaoMap();
