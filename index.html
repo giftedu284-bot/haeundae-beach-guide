@@ -6,7 +6,6 @@
   <meta name="description" content="해운대해수욕장 안전·접근성 지도" />
   <title>해변가이드 | 해운대 안전 지도</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- 카카오디벨로퍼스에서 발급한 JavaScript 키로 YOUR_KAKAO_JAVASCRIPT_KEY를 바꾸세요. -->
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e48e261f5285b8768f8276297459a06b&autoload=false"></script>
   <style>
     #kakaoMap { position:absolute !important; inset:0 !important; z-index:0 !important; pointer-events:auto !important; }
@@ -38,6 +37,20 @@
     .rip-current-details span{padding:8px;border-radius:8px;background:#fff;color:#66767c;font-size:10px}
     .rip-current-details b{display:block;margin-top:3px;color:#163747;font-size:12px}
     .rip-current-note{margin:10px 0 0;color:#7d756a;font-size:10px;line-height:1.5}
+    .panel-group{margin-top:18px}
+    .environment-group{margin-top:18px;border:1px solid #bddde4;border-radius:16px;background:#f7fcfd;overflow:hidden}
+    .environment-group>summary{list-style:none;cursor:pointer;padding:16px 18px;background:#eaf7f8;color:#083b50;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .environment-group>summary::-webkit-details-marker{display:none}
+    .environment-group>summary::after{content:"＋";font-size:18px;font-weight:700}
+    .environment-group[open]>summary::after{content:"−"}
+    .environment-group .environment-body{padding:0 14px 14px}
+    .environment-group .weather-card,.environment-group .safety-index-card,.environment-group .condition-card,.environment-group .rip-current-card,.environment-group .tide-card{margin-top:14px}
+    .missing-child-group{margin-top:18px;border:1px solid #f2c7c3;border-radius:16px;background:#fff9f8;padding:14px}
+    .missing-child-group .emergency-card,.missing-child-group .report-card{margin-top:0}
+    .missing-child-group .report-card{margin-top:12px}
+    .facility-group{margin-top:18px;border:1px solid #cfe5e1;border-radius:16px;background:#f8fcfb;padding:14px}
+    .facility-group>.card,.facility-group>.facility-guide-card{margin-top:0}
+    .facility-group>.facility-guide-card{margin-top:12px}
   </style>
 </head>
 <body>
@@ -68,91 +81,105 @@
     </section>
     <aside class="panel">
       <div class="panel-head"><p class="tag">BEACH SAFETY MAP</p><h2>해변 주소·안전 안내</h2><p>만남 위치, 내 위치, 접근성 시설을 지도에서 바로 확인하세요.</p><button id="openGuide" class="text-button" type="button">이 앱은 무엇을 하나요? ›</button></div>
+
+      <section class="beach-picker panel-group"><p class="tag">BEACH SELECT</p><label for="beachSelect">해변 선택</label><select id="beachSelect"><option value="haeundae">해운대해수욕장 · 구역 주소 제공</option><option value="gwangalli">광안리해수욕장 · 지도 탐색</option><option value="songjeong">송정해수욕장 · 지도 탐색</option><option value="songdo">송도해수욕장 · 지도 탐색</option></select><p>다른 해변의 구역 주소는 현장 좌표 검증 후 순차적으로 추가합니다.</p></section>
+
       <section class="card location-card"><div class="card-icon">◎</div><div><span>내가 선택한 장소</span><h3 id="panelAddress">6-D 구역 <small>· 10m × 10m</small></h3><p>해운대해수욕장 모래사장</p></div></section>
+
       <section class="card"><div class="card-title"><div class="card-icon">⌾</div><div><h3>내 현재 위치</h3><p>GPS로 현재 위치의 해변 주소를 찾아요.</p></div></div><button id="locateMe" class="wide-button active" type="button">내 위치로 격자 찾기 <span>⌖</span></button></section>
-      <section class="card"><div class="card-title"><div class="card-icon">♿</div><div><h3>해변 편의·접근성</h3><p>주차장, 경사로, 휠체어 대여 등 현장 좌표를 지도에서 확인하세요.</p></div></div><button id="toggleFacilities" class="wide-button active" type="button">지도에서 편의·접근성 시설 숨기기 <span>›</span></button><button id="toggleDeck" class="wide-button" type="button">데크길 표시하기 <span>›</span></button></section>
-      <section class="weather-card" aria-live="polite">
-        <p class="tag">BEACH WEATHER</p>
-        <h3 id="weatherBeach">오늘의 해변 날씨</h3>
-        <div class="weather-current"><b id="weatherIcon">…</b><strong id="weatherTemp">불러오는 중…</strong><span id="weatherDesc">현재 날씨를 확인하고 있어요.</span></div>
-        <div class="weather-details"><span>강수 <b id="weatherRain">–</b></span><span>바람 <b id="weatherWind">–</b></span></div>
-        <p id="weatherUpdated" class="weather-updated"></p>
-      </section>
-      <section class="safety-index-card" aria-live="polite">
-        <p class="tag">BEACH SAFETY INDEX</p>
-        <h3>해변 안전 참고지수</h3>
-        <div class="safety-index-main">
-          <div id="safetyIndexLight" class="safety-index-light">⚪</div>
-          <div><strong id="safetyIndexLabel">계산 중</strong><span id="safetyIndexReason">날씨와 공식 이안류 정보를 함께 확인하고 있어요.</span></div>
-        </div>
-        <p class="safety-index-note">기온·강수·바람과 국립해양조사원 공식 이안류 지수를 함께 반영한 참고지수입니다. 현장 통제와 안전요원 안내를 우선하세요.</p>
-      </section>
-      <section class="condition-card" aria-live="polite">
-        <p class="tag">AT A GLANCE</p>
-        <h3>한눈에 보는 해변 상태</h3>
-        <p id="conditionSummary" class="condition-summary">날씨·조석·이안류 정보를 함께 확인하고 있어요.</p>
-        <div class="condition-points">
-          <p id="conditionWind"><b>바람</b> · 확인 중</p>
-          <p id="conditionRain"><b>비</b> · 확인 중</p>
-          <p id="conditionTide"><b>조석</b> · 공식 정보를 확인 중</p>
-          <p id="conditionRip"><b>이안류</b> · 공식 지수를 확인 중</p>
-        </div>
-        <p class="condition-note">현재 기상·조석·공식 이안류 지수를 이해하기 쉽게 풀어쓴 참고 설명입니다. 실제 입수·수영 여부는 현장 통제와 안전요원 안내를 함께 확인하세요.</p>
-      </section>
-      <section class="rip-current-card" aria-live="polite">
-        <p class="tag">RIP CURRENT ALERT</p>
-        <h3>해운대 이안류 위험 정보</h3>
-        <div class="rip-current-main">
-          <div id="ripCurrentLight" class="rip-current-light">⚪</div>
-          <div><strong id="ripCurrentLevel">공식 정보 확인 중</strong><span id="ripCurrentStatus">국립해양조사원 이안류 지수를 불러오고 있어요.</span></div>
-        </div>
-        <p id="ripCurrentWindow" class="rip-current-window">오늘 관측 시간대를 확인하고 있어요.</p>
-        <div class="rip-current-details">
-          <span>최근 관측<b id="ripCurrentTime">–</b></span>
-          <span>지수값<b id="ripCurrentScore">–</b></span>
-          <span>파고<b id="ripCurrentWave">–</b></span>
-          <span>풍속<b id="ripCurrentWind">–</b></span>
-        </div>
-        <p class="rip-current-note">국립해양조사원 공식 이안류 지수의 실제 관측 기반 모니터링 정보입니다. 미래 발생 시각을 예측한 값이 아니며, 현장 통제와 안전요원 안내를 우선하세요.</p>
-      </section>
-      <section class="tide-card">
-        <p class="tag">TIDE INFORMATION</p>
-        <h3 id="tideBeach">공식 만조·간조 확인</h3>
-        <p id="tideStatus" aria-live="polite">국립해양조사원 조석 정보를 안전하게 연결하고 있어요.</p>
-        <div id="tideTimes" class="tide-times" hidden></div>
-        <p id="tideUpdated" class="tide-updated"></p>
-        <a id="tideLink" href="https://www.khoa.go.kr/" target="_blank" rel="noopener noreferrer">국립해양조사원 해양정보 열기 ↗</a>
-      </section>
-      <section class="beach-picker"><p class="tag">BEACH SELECT</p><label for="beachSelect">해변 선택</label><select id="beachSelect"><option value="haeundae">해운대해수욕장 · 구역 주소 제공</option><option value="gwangalli">광안리해수욕장 · 지도 탐색</option><option value="songjeong">송정해수욕장 · 지도 탐색</option><option value="songdo">송도해수욕장 · 지도 탐색</option></select><p>다른 해변의 구역 주소는 현장 좌표 검증 후 순차적으로 추가합니다.</p></section>
-      <section class="facility-guide-card" aria-labelledby="hygieneGuideTitle">
-        <p class="tag">BEACH FACILITIES</p>
-        <h3 id="hygieneGuideTitle">씻는 시설·화장실 안내</h3>
-        <p class="facility-guide-intro">팀이 정리한 화장실 좌표를 지도 위에서 바로 확인하세요.</p>
-        <div class="facility-guide-list">
-          <button class="facility-guide-option active" type="button" data-facility-guide="toilet"><span aria-hidden="true">🚻</span><div><strong>화장실</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
-          <button class="facility-guide-option" type="button" data-facility-guide="shower"><span aria-hidden="true">🚿</span><div><strong>간이 샤워 시설</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
-          <button class="facility-guide-option" type="button" data-facility-guide="changing"><span aria-hidden="true">👕</span><div><strong>탈의·세족 공간</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
-        </div>
-        <button id="toggleHygieneFacilities" class="wide-button active" type="button">지도에서 씻는 시설 숨기기 <span>⌖</span></button>
-        <div id="facilityGuideDetail" class="facility-guide-detail" role="status"><strong>지도 핀 안내</strong><p>🚻은 공중화장실, 🚿는 샤워·세족 가능 시설입니다. 핀을 누르면 시설 정보를 확인할 수 있어요.</p></div>
-        <p class="facility-guide-note">운영 시간과 실제 개방 여부는 계절에 따라 달라질 수 있으니 현장 표지를 확인하세요.</p>
+
+      <section class="missing-child-group" aria-labelledby="missingChildTitle">
+        <section class="emergency-card">
+          <p class="tag">MISSING CHILD · EMERGENCY</p><h3 id="missingChildTitle">미아 찾기 · 긴급 연락</h3>
+          <p>이 앱은 신고를 접수하지 않습니다. 112·119 또는 현장 안전요원에게 먼저 연락한 뒤, 선택한 구역을 수색 위치로 표시해 공유하세요.</p>
+          <div><a href="tel:112">112 경찰 신고</a><a href="tel:119">119 구조 요청</a></div>
+        </section>
+        <form id="reportForm" class="report-card">
+          <div class="report-title"><span>위치 표시</span><div><h3>미아 마지막 목격 위치 표시</h3><p>선택한 격자를 중심으로 수색 범위를 지도에 표시합니다.</p></div></div>
+          <label>아동 이름<input id="childName" required placeholder="예: 김해운" /></label>
+          <label>옷차림 또는 특징<input id="childDescription" required placeholder="예: 노란 티셔츠, 파란 모자" /></label>
+          <div class="report-location"><span>마지막 목격 위치</span><b id="reportAddress">6-D 구역</b></div>
+          <button class="report-button" type="submit">지도에 수색 위치 표시하기</button>
+          <p id="reportResult" class="report-result" role="status" hidden></p>
+          <small>이 기능은 신고 접수가 아니라 현재 기기의 지도에 수색 위치를 표시하는 보조 기능입니다. 긴급 상황은 112 또는 현장 안전요원에게 먼저 알려주세요.</small>
+        </form>
       </section>
 
-      <section class="emergency-card">
-        <p class="tag">EMERGENCY FIRST</p><h3>긴급 상황은 112 · 119</h3>
-        <p>이 앱은 신고를 접수하지 않습니다. 경찰·소방 또는 현장 안전요원에게 먼저 연락한 뒤, 선택한 구역 위치를 공유하세요.</p>
-        <div><a href="tel:112">112 경찰 신고</a><a href="tel:119">119 구조 요청</a></div>
+      <details class="environment-group" open>
+        <summary>기상·해양 안전 정보 <span>날씨 · 안전지수 · 해변상태 · 이안류 · 조석</span></summary>
+        <div class="environment-body">
+          <section class="weather-card" aria-live="polite">
+            <p class="tag">BEACH WEATHER</p>
+            <h3 id="weatherBeach">오늘의 해변 날씨</h3>
+            <div class="weather-current"><b id="weatherIcon">…</b><strong id="weatherTemp">불러오는 중…</strong><span id="weatherDesc">현재 날씨를 확인하고 있어요.</span></div>
+            <div class="weather-details"><span>강수 <b id="weatherRain">–</b></span><span>바람 <b id="weatherWind">–</b></span></div>
+            <p id="weatherUpdated" class="weather-updated"></p>
+          </section>
+          <section class="safety-index-card" aria-live="polite">
+            <p class="tag">BEACH SAFETY INDEX</p>
+            <h3>해변 안전 참고지수</h3>
+            <div class="safety-index-main">
+              <div id="safetyIndexLight" class="safety-index-light">⚪</div>
+              <div><strong id="safetyIndexLabel">계산 중</strong><span id="safetyIndexReason">날씨와 공식 이안류 정보를 함께 확인하고 있어요.</span></div>
+            </div>
+            <p class="safety-index-note">기온·강수·바람과 국립해양조사원 공식 이안류 지수를 함께 반영한 참고지수입니다. 현장 통제와 안전요원 안내를 우선하세요.</p>
+          </section>
+          <section class="condition-card" aria-live="polite">
+            <p class="tag">AT A GLANCE</p>
+            <h3>한눈에 보는 해변 상태</h3>
+            <p id="conditionSummary" class="condition-summary">날씨·조석·이안류 정보를 함께 확인하고 있어요.</p>
+            <div class="condition-points">
+              <p id="conditionWind"><b>바람</b> · 확인 중</p>
+              <p id="conditionRain"><b>비</b> · 확인 중</p>
+              <p id="conditionTide"><b>조석</b> · 공식 정보를 확인 중</p>
+              <p id="conditionRip"><b>이안류</b> · 공식 지수를 확인 중</p>
+            </div>
+            <p class="condition-note">현재 기상·조석·공식 이안류 지수를 이해하기 쉽게 풀어쓴 참고 설명입니다. 실제 입수·수영 여부는 현장 통제와 안전요원 안내를 함께 확인하세요.</p>
+          </section>
+          <section class="rip-current-card" aria-live="polite">
+            <p class="tag">RIP CURRENT ALERT</p>
+            <h3>해운대 이안류 위험 정보</h3>
+            <div class="rip-current-main">
+              <div id="ripCurrentLight" class="rip-current-light">⚪</div>
+              <div><strong id="ripCurrentLevel">공식 정보 확인 중</strong><span id="ripCurrentStatus">국립해양조사원 이안류 지수를 불러오고 있어요.</span></div>
+            </div>
+            <p id="ripCurrentWindow" class="rip-current-window">오늘 관측 시간대를 확인하고 있어요.</p>
+            <div class="rip-current-details">
+              <span>최근 관측<b id="ripCurrentTime">–</b></span>
+              <span>지수값<b id="ripCurrentScore">–</b></span>
+              <span>파고<b id="ripCurrentWave">–</b></span>
+              <span>풍속<b id="ripCurrentWind">–</b></span>
+            </div>
+            <p class="rip-current-note">국립해양조사원 공식 이안류 지수의 실제 관측 기반 모니터링 정보입니다. 미래 발생 시각을 예측한 값이 아니며, 현장 통제와 안전요원 안내를 우선하세요.</p>
+          </section>
+          <section class="tide-card">
+            <p class="tag">TIDE INFORMATION</p>
+            <h3 id="tideBeach">공식 만조·간조 확인</h3>
+            <p id="tideStatus" aria-live="polite">국립해양조사원 조석 정보를 안전하게 연결하고 있어요.</p>
+            <div id="tideTimes" class="tide-times" hidden></div>
+            <p id="tideUpdated" class="tide-updated"></p>
+            <a id="tideLink" href="https://www.khoa.go.kr/" target="_blank" rel="noopener noreferrer">국립해양조사원 해양정보 열기 ↗</a>
+          </section>
+        </div>
+      </details>
+
+      <section class="facility-group" aria-labelledby="facilityGroupTitle">
+        <section class="card"><div class="card-title"><div class="card-icon">♿</div><div><h3 id="facilityGroupTitle">해변 편의·접근성</h3><p>주차장, 경사로, 휠체어 대여 등 현장 좌표를 지도에서 확인하세요.</p></div></div><button id="toggleFacilities" class="wide-button active" type="button">지도에서 편의·접근성 시설 숨기기 <span>›</span></button><button id="toggleDeck" class="wide-button" type="button">데크길 표시하기 <span>›</span></button></section>
+        <section class="facility-guide-card" aria-labelledby="hygieneGuideTitle">
+          <p class="tag">BEACH FACILITIES</p>
+          <h3 id="hygieneGuideTitle">씻는 시설·화장실 안내</h3>
+          <p class="facility-guide-intro">팀이 정리한 화장실·샤워·세족 시설 좌표를 지도 위에서 바로 확인하세요.</p>
+          <div class="facility-guide-list">
+            <button class="facility-guide-option active" type="button" data-facility-guide="toilet"><span aria-hidden="true">🚻</span><div><strong>화장실</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
+            <button class="facility-guide-option" type="button" data-facility-guide="shower"><span aria-hidden="true">🚿</span><div><strong>간이 샤워 시설</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
+            <button class="facility-guide-option" type="button" data-facility-guide="changing"><span aria-hidden="true">👕</span><div><strong>탈의·세족 공간</strong><p>이용 안내 보기</p></div><b aria-hidden="true">›</b></button>
+          </div>
+          <button id="toggleHygieneFacilities" class="wide-button active" type="button">지도에서 씻는 시설 숨기기 <span>⌖</span></button>
+          <div id="facilityGuideDetail" class="facility-guide-detail" role="status"><strong>지도 핀 안내</strong><p>🚻은 공중화장실, 🚿는 샤워·세족 가능 시설입니다. 핀을 누르면 시설 정보를 확인할 수 있어요.</p></div>
+          <p class="facility-guide-note">운영 시간과 실제 개방 여부는 계절에 따라 달라질 수 있으니 현장 표지를 확인하세요.</p>
+        </section>
       </section>
-      <form id="reportForm" class="report-card" hidden>
-        <div class="report-title"><span>긴급</span><div><h3>실종 아동 마지막 위치 신고</h3><p>선택한 격자를 중심으로 수색 범위를 좁혀요.</p></div></div>
-        <label>아동 이름<input id="childName" required placeholder="예: 김해운" /></label>
-        <label>옷차림 또는 특징<input id="childDescription" required placeholder="예: 노란 티셔츠, 파란 모자" /></label>
-        <div class="report-location"><span>마지막 목격 위치</span><b id="reportAddress">6-D 구역</b></div>
-        <button class="report-button" type="submit">수색 알림 등록하기</button>
-        <p id="reportResult" class="report-result" role="status" hidden></p>
-        <small>긴급 상황에서는 112 또는 해변 안전요원에게 먼저 알려주세요.</small>
-      </form>
-      <div class="tips"><span>안전 이용 팁</span><p>만남 장소는 “6-D 구역”처럼 격자 주소로 약속해 보세요.</p></div>
+
       <section class="meet-card" aria-labelledby="meetTitle">
         <p class="tag">MEET HERE</p>
         <h3 id="meetTitle">만남 위치 공유</h3>
