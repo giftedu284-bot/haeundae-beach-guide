@@ -1,15 +1,19 @@
-// Multi-beach extension: non-Haeundae guide grids, public-map facilities,
+// Multi-beach extension v2: beach-aligned 10m guide grids, public-map facilities,
 // GPS/location sharing, and official rip-current monitoring where KHOA supports it.
 (() => {
   const beachMeta = {
-    haeundae: { name: "해운대해수욕장", lat: 35.1587, lng: 129.1604, ripCode: "HAE", verifiedGrid: true, verifiedFacilities: true },
-    gwangalli: { name: "광안리해수욕장", lat: 35.1532, lng: 129.1186, ripCode: null, verifiedGrid: false, verifiedFacilities: false },
-    songjeong: { name: "송정해수욕장", lat: 35.1785, lng: 129.2016, ripCode: "SONGJUNG", verifiedGrid: false, verifiedFacilities: false },
-    songdo: { name: "송도해수욕장", lat: 35.0767, lng: 129.0178, ripCode: null, verifiedGrid: false, verifiedFacilities: false }
+    haeundae: { name: "해운대해수욕장", lat: 35.1587, lng: 129.1604, ripCode: "HAE", gridPrefix: "HAE" },
+    gwangalli: { name: "광안리해수욕장", lat: 35.1532, lng: 129.1186, ripCode: null, gridPrefix: "GW" },
+    songjeong: { name: "송정해수욕장", lat: 35.1785, lng: 129.2016, ripCode: "SONGJUNG", gridPrefix: "SJ" },
+    songdo: { name: "송도해수욕장", lat: 35.0767, lng: 129.0178, ripCode: null, gridPrefix: "SD" }
   };
 
   const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
   const RIP_WORKER_URL = "https://beach-guide-rip-current-api.chopyoz1207.workers.dev";
+  const GRID_SIZE = 10;
+  const GRID_CACHE_HOURS = 24;
+  const MAX_GRID_CELLS = 2200;
+
   let selectedPoint = null;
   let selectedGuideAddress = null;
   let selectedGuidePolygon = null;
@@ -27,7 +31,7 @@
   const isHaeundae = () => key() === "haeundae";
 
   function mapCenterPoint() {
-    if (!kakaoMap) return null;
+    if (!window.kakaoMap) return null;
     const center = kakaoMap.getCenter();
     return { lat: center.getLat(), lng: center.getLng() };
   }
@@ -66,8 +70,8 @@
   }
 
   function clearSearchPoint() {
-    if (searchMarker) searchMarker.setMap(null);
-    if (searchCircle) searchCircle.setMap(null);
+    searchMarker?.setMap(null);
+    searchCircle?.setMap(null);
     searchMarker = null;
     searchCircle = null;
   }
@@ -97,15 +101,12 @@
   function chooseBeachWay(elements, current) {
     const ways = elements.filter((element) => element.type === "way" && Array.isArray(element.geometry) && element.geometry.length >= 4);
     if (!ways.length) return null;
-    const nameNeedle = current.name.replace("해수욕장", "");
-    const scored = ways.map((way) => {
+    const needle = current.name.replace("해수욕장", "");
+    return ways.map((way) => {
       const point = elementPoint(way) || current;
       const name = way.tags?.name || way.tags?.["name:ko"] || "";
-      const nameBonus = name.includes(nameNeedle) ? -1e12 : 0;
-      return { way, score: distanceSq(point, current) + nameBonus };
-    });
-    scored.sort((a, b) => a.score - b.score);
-    return scored[0].way;
+      return { way, score: distanceSq(point, current) + (name.includes(needle) ? -1e12 : 0) };
+    }).sort((a, b) => a.score - b.score)[0].way;
   }
 
   function makeProjection(origin) {
@@ -127,83 +128,150 @@
     return inside;
   }
 
-  function gridLabel(row, column) {
-    let n = row + 1;
-    let letters = "";
-    while (n > 0) { n--; letters = String.fromCharCode(65 + (n % 26)) + letters; n = Math.floor(n / 26); }
-    return `${letters}${column + 1}`;
+  function principalAxes(points) {
+    const cx = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const cy = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+    let xx = 0, yy = 0, xy = 0;
+    points.forEach((p) => {
+      const dx = p.x - cx, dy = p.y - cy;
+      xx += dx * dx; yy += dy * dy; xy += dx * dy;
+    });
+    const angle = 0.5 * Math.atan2(2 * xy, xx - yy);
+    let u = { x: Math.cos(angle), y: Math.sin(angle) };
+    if (u.x < 0) u = { x: -u.x, y: -u.y };
+    const v = { x: -u.y, y: u.x };
+    return { centre: { x: cx, y: cy }, u, v };
+  }
+
+  function toGridFrame(point, axes) {
+    const dx = point.x - axes.centre.x;
+    const dy = point.y - axes.centre.y;
+    return { x: dx * axes.u.x + dy * axes.u.y, y: dx * axes.v.x + dy * axes.v.y };
+  }
+
+  function fromGridFrame(point, axes) {
+    return {
+      x: axes.centre.x + point.x * axes.u.x + point.y * axes.v.x,
+      y: axes.centre.y + point.x * axes.u.y + point.y * axes.v.y
+    };
+  }
+
+  function alphaLabel(index) {
+    let n = index + 1, label = "";
+    while (n > 0) { n--; label = String.fromCharCode(65 + (n % 26)) + label; n = Math.floor(n / 26); }
+    return label;
+  }
+
+  function gridAddress(current, row, column) {
+    return `${current.gridPrefix}-${alphaLabel(row)}${String(column + 1).padStart(2, "0")}`;
+  }
+
+  function cacheKey(current) {
+    return `beachGridBoundary:${current.gridPrefix}:v2`;
+  }
+
+  function readCachedBoundary(current) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey(current)) || "null");
+      if (!cached || !Array.isArray(cached.boundary) || Date.now() - cached.savedAt > GRID_CACHE_HOURS * 3600000) return null;
+      return cached;
+    } catch { return null; }
+  }
+
+  function writeCachedBoundary(current, boundary, sourceName) {
+    try { localStorage.setItem(cacheKey(current), JSON.stringify({ savedAt: Date.now(), boundary, sourceName })); } catch {}
+  }
+
+  async function getBeachBoundary(current) {
+    const cached = readCachedBoundary(current);
+    if (cached) return cached;
+    const query = `[out:json][timeout:20];way(around:2200,${current.lat},${current.lng})["natural"="beach"];out geom tags;`;
+    const data = await overpass(query);
+    const way = chooseBeachWay(data.elements || [], current);
+    if (!way) throw new Error("beach polygon not found");
+    const boundary = way.geometry.map((point) => ({ lat: point.lat, lng: point.lon }));
+    const sourceName = way.tags?.name || way.tags?.["name:ko"] || current.name;
+    writeCachedBoundary(current, boundary, sourceName);
+    return { boundary, sourceName };
   }
 
   function selectGuideCell(address, polygon, centre) {
-    if (selectedGuidePolygon) selectedGuidePolygon.setOptions({ fillOpacity: 0.08, strokeColor: "#237a8b" });
+    if (selectedGuidePolygon) selectedGuidePolygon.setOptions({ fillOpacity: 0.05, strokeColor: "#237a8b", strokeWeight: 1 });
     selectedGuidePolygon = polygon;
-    selectedGuidePolygon.setOptions({ fillOpacity: 0.48, fillColor: "#f6b73c", strokeColor: "#d76b00" });
+    selectedGuidePolygon.setOptions({ fillOpacity: 0.52, fillColor: "#f6b73c", strokeColor: "#c85f00", strokeWeight: 2 });
     selectedGuideAddress = address;
     selectedPoint = centre;
     updateLocationUI();
-    setNotice(`${meta().name} ${address} 안내격자를 선택했어요. 약속 장소나 마지막 목격 위치 공유에 사용할 수 있어요.`);
+    setNotice(`${meta().name} ${address} 10m 안내격자를 선택했어요. 만남 위치·미아 마지막 발견 구역·공유 위치에 사용할 수 있어요.`);
   }
 
   async function loadGuideGrid(token) {
     clearGuideGrid();
-    if (isHaeundae() || !kakaoMap) return;
+    if (isHaeundae() || !window.kakaoMap) return;
     const current = meta();
-    setNotice(`${current.name}의 10m 안내격자를 불러오는 중이에요.`);
+    setNotice(`${current.name}의 해변 방향에 맞춘 10m 격자를 만들고 있어요.`);
     try {
-      const query = `[out:json][timeout:20];way(around:2200,${current.lat},${current.lng})["natural"="beach"];out geom tags;`;
-      const data = await overpass(query);
+      const { boundary, sourceName } = await getBeachBoundary(current);
       if (token !== loadToken || isHaeundae()) return;
-      const way = chooseBeachWay(data.elements || [], current);
-      if (!way) throw new Error("beach polygon not found");
-      const boundary = way.geometry.map((point) => ({ lat: point.lat, lng: point.lon }));
-      const origin = elementPoint(way) || current;
+      const origin = boundary.reduce((acc, p) => ({ lat: acc.lat + p.lat / boundary.length, lng: acc.lng + p.lng / boundary.length }), { lat: 0, lng: 0 });
       const projection = makeProjection(origin);
-      const local = boundary.map(projection.toLocal);
-      const minX = Math.floor(Math.min(...local.map((p) => p.x)) / 10) * 10;
-      const maxX = Math.ceil(Math.max(...local.map((p) => p.x)) / 10) * 10;
-      const minY = Math.floor(Math.min(...local.map((p) => p.y)) / 10) * 10;
-      const maxY = Math.ceil(Math.max(...local.map((p) => p.y)) / 10) * 10;
+      const localBoundary = boundary.map(projection.toLocal);
+      const axes = principalAxes(localBoundary);
+      const rotatedBoundary = localBoundary.map((p) => toGridFrame(p, axes));
+
+      const minX = Math.floor(Math.min(...rotatedBoundary.map((p) => p.x)) / GRID_SIZE) * GRID_SIZE;
+      const maxX = Math.ceil(Math.max(...rotatedBoundary.map((p) => p.x)) / GRID_SIZE) * GRID_SIZE;
+      const minY = Math.floor(Math.min(...rotatedBoundary.map((p) => p.y)) / GRID_SIZE) * GRID_SIZE;
+      const maxY = Math.ceil(Math.max(...rotatedBoundary.map((p) => p.y)) / GRID_SIZE) * GRID_SIZE;
+
       let count = 0;
-      for (let y = minY, row = 0; y < maxY && count < 2500; y += 10, row++) {
-        for (let x = minX, column = 0; x < maxX && count < 2500; x += 10, column++) {
-          const corners = [{ x, y }, { x: x + 10, y }, { x: x + 10, y: y + 10 }, { x, y: y + 10 }];
-          const centreLocal = { x: x + 5, y: y + 5 };
-          if (!pointInside(centreLocal, local) || !corners.every((corner) => pointInside(corner, local))) continue;
-          const pathPoints = corners.map(projection.toLatLng);
-          const centre = projection.toLatLng(centreLocal);
-          const address = gridLabel(row, column);
+      let rowIndex = 0;
+      for (let y = minY; y < maxY && count < MAX_GRID_CELLS; y += GRID_SIZE, rowIndex++) {
+        let columnIndex = 0;
+        for (let x = minX; x < maxX && count < MAX_GRID_CELLS; x += GRID_SIZE, columnIndex++) {
+          const centreFrame = { x: x + GRID_SIZE / 2, y: y + GRID_SIZE / 2 };
+          if (!pointInside(centreFrame, rotatedBoundary)) continue;
+          const frameCorners = [
+            { x, y }, { x: x + GRID_SIZE, y },
+            { x: x + GRID_SIZE, y: y + GRID_SIZE }, { x, y: y + GRID_SIZE }
+          ];
+          const localCorners = frameCorners.map((p) => fromGridFrame(p, axes));
+          const latLngCorners = localCorners.map(projection.toLatLng);
+          const centre = projection.toLatLng(fromGridFrame(centreFrame, axes));
+          const address = gridAddress(current, rowIndex, columnIndex);
           const polygon = new window.kakao.maps.Polygon({
             map: kakaoMap,
-            path: pathPoints.map((p) => new window.kakao.maps.LatLng(p.lat, p.lng)),
+            path: latLngCorners.map((p) => new window.kakao.maps.LatLng(p.lat, p.lng)),
             strokeWeight: 1,
             strokeColor: "#237a8b",
-            strokeOpacity: 0.7,
+            strokeOpacity: 0.72,
             fillColor: "#70d1d2",
-            fillOpacity: 0.08
+            fillOpacity: 0.05
           });
           window.kakao.maps.event.addListener(polygon, "click", () => selectGuideCell(address, polygon, centre));
           guideGridOverlays.push(polygon);
           count++;
         }
       }
-      const sourceName = way.tags?.name || current.name;
-      setNotice(`${sourceName} 공개 지도 해변 경계를 기준으로 ${count.toLocaleString()}개의 10m 안내격자를 만들었어요. 공식 측량 주소는 아닙니다.`);
-      updateGridNote(count);
+      setNotice(`${sourceName} 해변의 긴 방향에 맞춰 ${count.toLocaleString()}개의 10m 안내격자를 만들었어요.`);
+      updateGridNote(count, false, true);
     } catch (error) {
-      updateGridNote(0, true);
-      setNotice(`${current.name}의 공개 지도 해변 경계를 불러오지 못했어요. 지도·GPS 기능은 그대로 사용할 수 있습니다.`);
+      updateGridNote(0, true, false);
+      setNotice(`${current.name}의 10m 안내격자를 불러오지 못했어요. 지도·GPS 기능은 그대로 사용할 수 있습니다.`);
     }
   }
 
-  function updateGridNote(count, failed = false) {
+  function updateGridNote(count, failed = false, aligned = false) {
     const card = document.querySelector(".location-card");
     const note = ensureNote(card, "multi-beach-grid-note");
     if (!note) return;
     if (isHaeundae()) { note.hidden = true; return; }
     note.hidden = false;
-    note.textContent = failed
-      ? "10m 안내격자용 공개 지도 해변 경계를 불러오지 못했습니다. 잠시 후 다시 선택해 주세요."
-      : `OpenStreetMap 해변 경계를 기준으로 만든 10m 안내격자 ${count.toLocaleString()}개입니다. 공식 측량 주소가 아니라 만남·수색 보조용 안내격자입니다.`;
+    if (failed) {
+      note.textContent = "10m 안내격자용 공개 지도 해변 경계를 불러오지 못했습니다. 잠시 후 다시 선택해 주세요.";
+      return;
+    }
+    note.textContent = `${meta().gridPrefix} 코드 체계의 10m 안내격자 ${count.toLocaleString()}개${aligned ? "를 해변의 긴 방향에 맞춰 배치했습니다" : "를 표시합니다"}. OpenStreetMap 해변 경계를 바탕으로 만든 만남·수색 보조용 안내격자이며 공식 측량 주소는 아닙니다.`;
   }
 
   function facilityKind(tags = {}) {
@@ -218,7 +286,7 @@
   function renderOtherFacilities() {
     facilityOverlays.forEach((overlay) => overlay.setMap(null));
     facilityOverlays = [];
-    if (isHaeundae() || !kakaoMap) return;
+    if (isHaeundae() || !window.kakaoMap) return;
     facilityRecords.forEach((record) => {
       if ((record.group === "access" && !facilitiesVisibleOther) || (record.group === "hygiene" && !hygieneVisibleOther)) return;
       const button = document.createElement("button");
@@ -231,13 +299,7 @@
         const detail = document.querySelector("#facilityGuideDetail");
         if (detail) detail.innerHTML = `<strong>${record.title}</strong><p>${record.detail}</p>`;
       });
-      const overlay = new window.kakao.maps.CustomOverlay({
-        map: kakaoMap,
-        position: new window.kakao.maps.LatLng(record.point.lat, record.point.lng),
-        yAnchor: 1,
-        content: button
-      });
-      facilityOverlays.push(overlay);
+      facilityOverlays.push(new window.kakao.maps.CustomOverlay({ map: kakaoMap, position: new window.kakao.maps.LatLng(record.point.lat, record.point.lng), yAnchor: 1, content: button }));
     });
   }
 
@@ -266,12 +328,11 @@
         if (seen.has(id)) return null;
         seen.add(id);
         const name = element.tags?.name || element.tags?.["name:ko"] || kind.title;
-        const detail = `${name} · OpenStreetMap 공개 지도 좌표 · 운영 여부는 현장 확인 필요`;
-        return { point, ...kind, title: name, detail, dist: distanceSq(point, current) };
+        return { point, ...kind, title: name, detail: `${name} · OpenStreetMap 공개 지도 좌표 · 운영 여부는 현장 확인 필요`, dist: distanceSq(point, current) };
       }).filter(Boolean).sort((a, b) => a.dist - b.dist).slice(0, 40);
       renderOtherFacilities();
       updateFacilityNote();
-    } catch (error) {
+    } catch {
       facilityRecords = [];
       updateFacilityNote(true);
     }
@@ -336,7 +397,8 @@
     }
     if (card) card.hidden = false;
     latestRipCurrentLevel = null;
-    document.querySelector(".rip-current-card h3").textContent = `${current.name} 이안류 위험 정보`;
+    const heading = document.querySelector(".rip-current-card h3");
+    if (heading) heading.textContent = `${current.name} 이안류 위험 정보`;
     document.querySelector("#ripCurrentLight").textContent = "⚪";
     document.querySelector("#ripCurrentLevel").textContent = "공식 정보 확인 중";
     document.querySelector("#ripCurrentStatus").textContent = "국립해양조사원 이안류 지수를 불러오고 있어요.";
@@ -365,7 +427,7 @@
       if (conditionRip) conditionRip.innerHTML = `<b>이안류</b> · 현재 공식 지수는 ${normalized} 단계입니다.`;
       updateSafetyIndexFromWeather();
       updateConditionAnalysis();
-    } catch (error) {
+    } catch {
       if (token !== loadToken) return;
       latestRipCurrentLevel = "확인불가";
       document.querySelector("#ripCurrentLight").textContent = "⚠️";
@@ -378,19 +440,16 @@
   }
 
   function updateLocationUI() {
+    if (isHaeundae()) return;
     const current = meta();
     const point = activePoint();
-    const address = selectedGuideAddress ? `${selectedGuideAddress} 안내격자` : "지도 위치";
+    const address = selectedGuideAddress || "지도 위치";
     const selectedAddress = document.querySelector("#selectedAddress");
     const panelAddress = document.querySelector("#panelAddress");
-    const reportAddress = document.querySelector("#reportAddress");
-    if (!isHaeundae()) {
-      if (selectedAddress) selectedAddress.innerHTML = `${address} <em>${current.name}</em>`;
-      if (panelAddress) panelAddress.innerHTML = `${address} <small>· 10m 안내격자</small>`;
-      const desc = document.querySelector(".location-card p");
-      if (desc) desc.textContent = `${current.name} · ${formatPoint(point)}`;
-      if (reportAddress) reportAddress.textContent = `${current.name} · ${address} · ${formatPoint(point)}`;
-    }
+    if (selectedAddress) selectedAddress.innerHTML = `${address} <em>${current.name}</em>`;
+    if (panelAddress) panelAddress.innerHTML = `${address} <small>· 10m 안내격자</small>`;
+    const desc = document.querySelector(".location-card p");
+    if (desc) desc.textContent = `${current.name} · ${formatPoint(point)}`;
   }
 
   function syncUI() {
@@ -401,16 +460,12 @@
     if (panelTitle) panelTitle.textContent = `${current.name} 안전 안내`;
     const panelLead = document.querySelector(".panel-head > p:not(.tag)");
     if (panelLead) panelLead.textContent = other
-      ? "10m 안내격자, GPS, 날씨, 공개 지도 시설과 제공 가능한 공식 해양안전 정보를 확인하세요."
+      ? "해변 방향에 맞춘 10m 안내격자, GPS, 날씨, 공개 지도 시설과 제공 가능한 공식 해양안전 정보를 확인하세요."
       : "만남 위치, 내 위치, 접근성 시설을 지도에서 바로 확인하세요.";
     const locate = document.querySelector("#locateMe");
     if (locate && !locate.disabled) locate.innerHTML = other ? "내 현재 위치 지도에서 확인 <span>⌖</span>" : "내 위치로 격자 찾기 <span>⌖</span>";
     const copy = document.querySelector("#copyAddress");
-    if (copy) copy.textContent = other ? "위치 복사" : "주소 복사";
-    const reportHelp = document.querySelector(".missing-child-group .report-title p");
-    if (reportHelp) reportHelp.textContent = other ? "선택한 10m 안내격자 또는 지도 지점을 중심으로 수색 위치를 표시합니다." : "선택한 격자를 중심으로 수색 범위를 지도에 표시합니다.";
-    const reportButton = document.querySelector("#reportForm .report-button");
-    if (reportButton) reportButton.textContent = other ? "선택 지점을 수색 위치로 표시하기" : "지도에 수색 위치 표시하기";
+    if (copy) copy.textContent = other ? "격자 위치 복사" : "주소 복사";
     const indexNote = document.querySelector(".safety-index-note");
     if (indexNote && other) indexNote.textContent = current.ripCode
       ? "기온·강수·바람과 국립해양조사원 공식 이안류 지수를 함께 반영한 참고지수입니다. 현장 통제와 안전요원 안내를 우선하세요."
@@ -421,17 +476,9 @@
       if (note) { note.hidden = !other; note.textContent = `${current.name}의 공식 조석 예보지점은 아직 검증 중입니다. 확인되지 않은 지점 값을 대신 표시하지 않습니다.`; }
     }
     updateFacilityNote();
-    updateGridNote(guideGridOverlays.length);
+    updateGridNote(guideGridOverlays.length, false, true);
     updateLocationUI();
     if (other && !current.ripCode) applyWeatherOnlySafety();
-  }
-
-  function markSearchPoint(point, title) {
-    if (!point || !kakaoMap) return;
-    clearSearchPoint();
-    const position = new window.kakao.maps.LatLng(point.lat, point.lng);
-    searchMarker = new window.kakao.maps.Marker({ map: kakaoMap, position, title });
-    searchCircle = new window.kakao.maps.Circle({ map: kakaoMap, center: position, radius: 35, strokeWeight: 2, strokeColor: "#d93636", strokeOpacity: 0.9, strokeStyle: "shortdash", fillColor: "#e74c4c", fillOpacity: 0.1 });
   }
 
   function handleLocate(event) {
@@ -458,40 +505,29 @@
   async function handleShare(event) {
     if (isHaeundae()) return;
     event.preventDefault(); event.stopImmediatePropagation();
-    const current = meta(); const point = activePoint();
-    const address = selectedGuideAddress ? `${selectedGuideAddress} 안내격자` : "지도 위치";
+    const current = meta();
+    const point = activePoint();
+    const address = selectedGuideAddress || "지도 위치";
     const message = `${current.name} 만남 위치: ${address} · ${formatPoint(point)}\n${location.href}`;
     const result = document.querySelector("#shareResult");
     try {
       if (navigator.share) await navigator.share({ title: `${current.name} 만남 위치`, text: message, url: location.href });
       else await navigator.clipboard.writeText(message);
-      result.hidden = false; result.textContent = navigator.share ? "공유 창을 열었어요." : "해변 이름·격자·위치 좌표를 복사했어요.";
-    } catch (error) { if (error.name !== "AbortError") { result.hidden = false; result.textContent = "공유하지 못했어요. 다시 시도해 주세요."; } }
+      if (result) { result.hidden = false; result.textContent = navigator.share ? "공유 창을 열었어요." : "해변 이름·10m 격자·위치 좌표를 복사했어요."; }
+    } catch (error) {
+      if (error.name !== "AbortError" && result) { result.hidden = false; result.textContent = "공유하지 못했어요. 다시 시도해 주세요."; }
+    }
   }
 
   async function handleCopy(event) {
     if (isHaeundae()) return;
     event.preventDefault(); event.stopImmediatePropagation();
-    const current = meta(); const point = activePoint();
-    const address = selectedGuideAddress ? `${selectedGuideAddress} 안내격자` : "지도 위치";
-    const text = `${current.name} ${address} ${formatPoint(point)}`;
-    try { await navigator.clipboard.writeText(text); setNotice(`${current.name} 위치를 복사했어요.`); }
-    catch { setNotice(`현재 위치: ${text}`); }
-  }
-
-  function handleReport(event) {
-    if (isHaeundae()) return;
-    event.preventDefault(); event.stopImmediatePropagation();
-    const form = event.currentTarget;
-    const name = form.querySelector("#childName")?.value.trim();
-    const description = form.querySelector("#childDescription")?.value.trim();
+    const current = meta();
     const point = activePoint();
-    markSearchPoint(point, `미아 마지막 목격 위치 · ${name || "이름 미입력"}`);
-    const result = form.querySelector("#reportResult");
-    result.hidden = false;
-    result.textContent = `${meta().name} ${selectedGuideAddress ? `${selectedGuideAddress} 안내격자` : formatPoint(point)}에 수색 보조 위치를 표시했어요. 이 표시는 신고 접수가 아닙니다.`;
-    setNotice(`미아 수색 보조 위치를 표시했어요. 112 또는 현장 안전요원에게 위치와 특징을 함께 알려주세요.${description ? ` 특징: ${description}` : ""}`);
-    form.reset();
+    const address = selectedGuideAddress || "지도 위치";
+    const text = `${current.name} ${address} ${formatPoint(point)}`;
+    try { await navigator.clipboard.writeText(text); setNotice(`${current.name} ${address} 위치를 복사했어요.`); }
+    catch { setNotice(`현재 위치: ${text}`); }
   }
 
   function handleFacilityToggle(event, hygiene) {
@@ -499,15 +535,17 @@
     event.preventDefault(); event.stopImmediatePropagation();
     if (hygiene) hygieneVisibleOther = !hygieneVisibleOther; else facilitiesVisibleOther = !facilitiesVisibleOther;
     renderOtherFacilities();
-    event.currentTarget.classList.toggle("active", hygiene ? hygieneVisibleOther : facilitiesVisibleOther);
+    const visible = hygiene ? hygieneVisibleOther : facilitiesVisibleOther;
+    event.currentTarget.classList.toggle("active", visible);
     event.currentTarget.innerHTML = hygiene
-      ? `${hygieneVisibleOther ? "지도에서 씻는 시설 숨기기" : "지도에서 씻는 시설 표시하기"} <span>⌖</span>`
-      : `${facilitiesVisibleOther ? "지도에서 편의·접근성 시설 숨기기" : "지도에서 편의·접근성 시설 보기"} <span>›</span>`;
+      ? `${visible ? "지도에서 씻는 시설 숨기기" : "지도에서 씻는 시설 표시하기"} <span>⌖</span>`
+      : `${visible ? "지도에서 편의·접근성 시설 숨기기" : "지도에서 편의·접근성 시설 보기"} <span>›</span>`;
   }
 
   async function handleBeachChange() {
     const token = ++loadToken;
-    clearGuideGrid(); clearOtherFacilities(); clearSearchPoint(); selectedPoint = null; selectedGuideAddress = null;
+    clearGuideGrid(); clearOtherFacilities(); clearSearchPoint();
+    selectedPoint = null; selectedGuideAddress = null;
     setTimeout(async () => {
       if (token !== loadToken) return;
       selectedPoint = mapCenterPoint();
@@ -519,16 +557,14 @@
   }
 
   function init() {
-    const select = document.querySelector("#beachSelect");
-    select?.addEventListener("change", handleBeachChange);
+    document.querySelector("#beachSelect")?.addEventListener("change", handleBeachChange);
     document.querySelector("#locateMe")?.addEventListener("click", handleLocate, true);
     document.querySelector("#shareMeeting")?.addEventListener("click", handleShare, true);
     document.querySelector("#copyAddress")?.addEventListener("click", handleCopy, true);
-    document.querySelector("#reportForm")?.addEventListener("submit", handleReport, true);
     document.querySelector("#toggleFacilities")?.addEventListener("click", (event) => handleFacilityToggle(event, false), true);
     document.querySelector("#toggleHygieneFacilities")?.addEventListener("click", (event) => handleFacilityToggle(event, true), true);
 
-    if (kakaoMap && window.kakao?.maps) {
+    if (window.kakaoMap && window.kakao?.maps) {
       window.kakao.maps.event.addListener(kakaoMap, "click", (mouseEvent) => {
         if (isHaeundae()) return;
         selectedPoint = { lat: mouseEvent.latLng.getLat(), lng: mouseEvent.latLng.getLng() };
