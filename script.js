@@ -3,7 +3,9 @@ const TIDE_WORKER_URL = "https://beach-guide-tide-api.chopyoz1207.workers.dev";
 // DT_0018 is the official API documentation sample only. It is deliberately
 // not presented to users as Haeundae until the nearest forecast-point mapping
 // has been verified with the National Oceanographic Research Institute.
-const TIDE_CONFIG = { observationCode: "DT_0018", verified: false };
+// DT_0005 is an official Busan observation point. It is only a nearby reference
+// until a Haeundae-specific forecast point is verified with KHOA.
+const TIDE_CONFIG = { observationCode: "DT_0005", verified: false, referenceName: "부산 조위관측소" };
 const BEACHES = {
   haeundae: { name: "해운대해수욕장", lat: 35.1587, lng: 129.1604, gridReady: true },
   gwangalli: { name: "광안리해수욕장", lat: 35.1532, lng: 129.1186, gridReady: false },
@@ -349,8 +351,8 @@ async function loadTide() {
     const data = await response.json();
     const items = Array.isArray(data.items) ? data.items : [];
     if (!TIDE_CONFIG.verified || !items.length) {
-      status.textContent = "공식 조석 서버 연결은 완료됐어요. 해운대 기준 예보지점 코드를 검증한 뒤 만·간조 시각을 표시합니다.";
-      updated.textContent = "추측값은 표시하지 않습니다.";
+      status.textContent = `${TIDE_CONFIG.referenceName} 기준 연결을 검증하고 있어요. 해운대 전용 예보지점이 확인되기 전에는 만·간조 시각을 표시하지 않습니다.`;
+      updated.textContent = "검증 전의 추측값은 표시하지 않습니다.";
       return;
     }
     status.textContent = "국립해양조사원 공식 조석예보";
