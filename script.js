@@ -447,6 +447,16 @@ document.querySelector("#shareMeeting").addEventListener("click", shareMeeting);
 document.querySelector("#beachSelect").addEventListener("change", changeBeach);
 document.querySelector("#toggleFacilities").addEventListener("click", (event) => { facilitiesVisible = !facilitiesVisible; event.currentTarget.classList.toggle("active", facilitiesVisible); event.currentTarget.innerHTML = `${facilitiesVisible ? "지도에서 시설 숨기기" : "지도에서 시설 보기"} <span>›</span>`; renderFacilities(); });
 document.querySelector("#toggleDeck").addEventListener("click", (event) => { deckVisible = !deckVisible; event.currentTarget.classList.toggle("active", deckVisible); event.currentTarget.innerHTML = `${deckVisible ? "데크길 숨기기" : "데크길 표시하기"} <span>›</span>`; renderFacilities(); });
+const facilityGuideInfo = {
+  toilet: { title: "화장실 이용 안내", text: "해변 출입구·산책로 쪽의 공공시설 표지를 먼저 확인하세요. 운영 시간과 청소 시간은 계절에 따라 달라질 수 있습니다." },
+  shower: { title: "간이 샤워 시설 이용 안내", text: "간이 샤워 시설은 성수기와 운영 기간에 따라 설치·개방 여부가 달라집니다. 물을 절약하고, 샤워 공간에서는 모래와 쓰레기를 남기지 마세요." },
+  changing: { title: "탈의·세족 공간 이용 안내", text: "탈의·세족 공간은 해변 출입 전후에 이용하세요. 귀중품은 보관하지 말고, 어린이는 보호자와 함께 이동하는 것이 안전합니다." }
+};
+document.querySelectorAll("[data-facility-guide]").forEach((button) => button.addEventListener("click", () => {
+  const info = facilityGuideInfo[button.dataset.facilityGuide];
+  document.querySelectorAll("[data-facility-guide]").forEach((item) => item.classList.toggle("active", item === button));
+  document.querySelector("#facilityGuideDetail").innerHTML = `<strong>${info.title}</strong><p>${info.text}</p>`;
+}));
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
 if (localStorage.getItem("haeundae-beach-guide-intro-seen")) setGuideVisible(false);
 renderGrid(); renderFacilities(); updateAddress(); loadWeather(); loadTide(); initKakaoMap();
