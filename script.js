@@ -485,3 +485,4 @@ document.querySelectorAll("[data-facility-guide]").forEach((button) => button.ad
 document.querySelector("#copyAddress").addEventListener("click", async () => { await navigator.clipboard.writeText(`해운대해수욕장 ${addressText()}`); setNotice(`${addressText()} 주소를 복사했어요.`); });
 if (localStorage.getItem("haeundae-beach-guide-intro-seen")) setGuideVisible(false);
 renderGrid(); renderFacilities(); updateAddress(); loadWeather(); loadTide(); initKakaoMap();
+window.addEventListener("resize", () => { if (kakaoMap) kakaoMap.relayout(); });
