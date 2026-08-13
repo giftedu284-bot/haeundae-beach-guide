@@ -51,18 +51,25 @@ let selected = "D6";
 let reports = JSON.parse(localStorage.getItem(storageKey) || "[]");
 // The former on-device report prototype is retired. Clear only its own data.
 if (reports.length) { reports = []; localStorage.removeItem(storageKey); }
-let facilitiesVisible = false;
+let facilitiesVisible = true;
 let hygieneFacilitiesVisible = true;
 let deckVisible = false;
 // Public OpenStreetMap facility points around Haeundae Beach. These are shown
 // as guidance only; seasonal operating status must still be checked on site.
 const geoFacilities = [
-  { lat: 35.1576925, lng: 129.1558940, label: "🚻", title: "공중화장실", detail: "휠체어 접근 정보가 등록된 공중화장실 · 운영 여부 현장 확인 필요" },
-  { lat: 35.1584198, lng: 129.1557890, label: "🚻", title: "공중화장실", detail: "해변 인근 공중화장실 · 운영 여부 현장 확인 필요" },
-  { lat: 35.1585689, lng: 129.1579280, label: "🚿", title: "화장실·샤워 시설", detail: "온수·유료 이용 정보가 등록된 시설 · 계절·운영 시간 현장 확인 필요" },
-  { lat: 35.1589254, lng: 129.1597873, label: "🚻", title: "공중화장실", detail: "해변 인근 공중화장실 · 운영 여부 현장 확인 필요" },
-  { lat: 35.1596022, lng: 129.1695437, label: "🚻", title: "공중화장실", detail: "해변 동쪽 인근 공중화장실 · 운영 여부 현장 확인 필요" },
-  { lat: 35.1603724, lng: 129.1688642, label: "🚻", title: "공중화장실", detail: "해변 동쪽 인근 공중화장실 · 등록된 운영 시간은 현장 확인 필요" }
+  { lat: 35.15925884610351, lng: 129.16034321731743, label: "🅿", title: "주차장", detail: "팀 제공 좌표 · 해변 편의시설", group: "access" },
+  { lat: 35.1590607372356, lng: 129.1603352338389, label: "🎫", title: "매표소", detail: "팀 제공 좌표 · 해변 편의시설", group: "access" },
+  { lat: 35.15908839631164, lng: 129.1604264923579, label: "♿", title: "장애인 화장실", detail: "팀 제공 좌표 · 장애인 접근성 시설", group: "hygiene" },
+  { lat: 35.15955178528441, lng: 129.16210664897255, label: "🔊", title: "촉지음성 종합안내판", detail: "팀 제공 좌표 · 접근성 안내 시설", group: "access" },
+  { lat: 35.15933314752367, lng: 129.15984042508225, label: "🅿", title: "주차장", detail: "팀 제공 좌표 · 해변 편의시설", group: "access" },
+  { lat: 35.15896453565692, lng: 129.1596660829552, label: "♿", title: "휠체어 대여", detail: "팀 제공 좌표 · 이용 가능 여부는 현장 확인 필요", group: "access" },
+  { lat: 35.15887334146308, lng: 129.1598529545797, label: "↗", title: "경사로", detail: "팀 제공 좌표 · 휠체어 이동 지원 경로", group: "access" },
+  { lat: 35.158972838476664, lng: 129.15882138571664, label: "🅿", title: "주차장", detail: "팀 제공 좌표 · 해변 편의시설", group: "access" },
+  { lat: 35.158634798471496, lng: 129.15794284806552, label: "🚻", title: "화장실", detail: "팀 제공 좌표 · 운영 시간은 현장 확인 필요", group: "hygiene" },
+  { lat: 35.15846214301394, lng: 129.15789713798458, label: "↗", title: "경사로", detail: "팀 제공 좌표 · 휠체어 이동 지원 경로", group: "access" },
+  { lat: 35.1585751193764, lng: 129.15775198881934, label: "🔊", title: "촉지음성 종합안내판", detail: "팀 제공 좌표 · 접근성 안내 시설", group: "access" },
+  { lat: 35.15877959319429, lng: 129.15778207991994, label: "🅿", title: "주차장", detail: "팀 제공 좌표 · 해변 편의시설", group: "access" },
+  { lat: 35.15905755433401, lng: 129.16026108220717, label: "🦶", title: "족욕장", detail: "팀 제공 좌표 · 이용 가능 여부는 현장 확인 필요", group: "access" }
 ];
 let facilityMarkers = [];
 let deckLine;
@@ -268,8 +275,9 @@ function renderFacilities() {
       strokeWeight: 7, strokeColor: "#76522a", strokeOpacity: 0.85, strokeStyle: "shortdash"
     });
   }
-  if (!hygieneFacilitiesVisible || currentBeachKey !== "haeundae") return;
+  if (currentBeachKey !== "haeundae") return;
   geoFacilities.forEach((facility) => {
+    if ((facility.group === "hygiene" && !hygieneFacilitiesVisible) || (facility.group === "access" && !facilitiesVisible)) return;
     const position = new window.kakao.maps.LatLng(facility.lat, facility.lng);
     const content = document.createElement("button");
     content.type = "button";
