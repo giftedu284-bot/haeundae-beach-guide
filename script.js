@@ -69,6 +69,12 @@ const geoFacilities = [
   { lat: 35.15846214301394, lng: 129.15789713798458, label: "↗", title: "경사로", detail: "팀 제공 좌표 · 휠체어 이동 지원 경로", group: "access" },
   { lat: 35.1585751193764, lng: 129.15775198881934, label: "🔊", title: "촉지음성 종합안내판", detail: "팀 제공 좌표 · 접근성 안내 시설", group: "access" },
   { lat: 35.15877959319429, lng: 129.15778207991994, label: "🅿", title: "주차장", detail: "팀 제공 좌표 · 해변 편의시설", group: "access" },
+  { lat: 35.1599499598263, lng: 129.167356608346, label: "🦶", title: "세족장", detail: "팀 현장 조사 좌표 · 세족 시설", group: "hygiene" },
+  { lat: 35.1590453706356, lng: 129.159857942827, label: "🦶", title: "세족장", detail: "팀 현장 조사 좌표 · 세족 시설", group: "hygiene" },
+  { lat: 35.15856973636371, lng: 129.15780122463147, label: "🦶", title: "세족장", detail: "팀 현장 조사 좌표 · 세족 시설", group: "hygiene" },
+  { lat: 35.15852700538682, lng: 129.15792354069478, label: "🚿", title: "샤워장", detail: "팀 현장 조사 좌표 · 샤워 시설", group: "hygiene" },
+  { lat: 35.15762492509603, lng: 129.15582585380992, label: "🦶", title: "세족장", detail: "팀 현장 조사 좌표 · 세족 시설", group: "hygiene" },
+  { lat: 35.15761273866907, lng: 129.15587765281612, label: "🚿", title: "샤워장", detail: "팀 현장 조사 좌표 · 샤워 시설", group: "hygiene" },
   { lat: 35.15905755433401, lng: 129.16026108220717, label: "🦶", title: "족욕장", detail: "팀 제공 좌표 · 이용 가능 여부는 현장 확인 필요", group: "access" }
 ];
 let facilityMarkers = [];
