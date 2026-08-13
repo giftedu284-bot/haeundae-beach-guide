@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="부산 주요 해수욕장 안전·접근성 지도" />
-  <title>해변가이드 | 부산 해변 안전 지도</title>
+  <title>모래핀 | 부산 해변 안전 지도</title>
+  <link rel="icon" type="image/svg+xml" href="moraepin-icon.svg" />
+  <link rel="apple-touch-icon" href="moraepin-icon.svg" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e48e261f5285b8768f8276297459a06b&autoload=false"></script>
   <style>
@@ -51,11 +53,13 @@
     .facility-group{margin-top:18px;border:1px solid #cfe5e1;border-radius:16px;background:#f8fcfb;padding:14px}
     .facility-group>.card,.facility-group>.facility-guide-card{margin-top:0}
     .facility-group>.facility-guide-card{margin-top:12px}
+    .moraepin-brand{display:flex;align-items:center;gap:9px;margin-bottom:10px}.moraepin-brand img{width:42px;height:42px;border-radius:11px;box-shadow:0 4px 12px rgba(20,55,70,.15)}.moraepin-brand strong{color:#123b50;font-size:18px}.tester-map-pin{display:none!important}.tester-sync-pin{position:relative;display:flex;align-items:center;gap:5px;padding:7px 9px;border:3px solid #fff;border-radius:11px;box-shadow:0 5px 16px rgba(12,48,68,.32);white-space:nowrap;font-size:10px;font-weight:900}.tester-sync-pin.selected{background:#ffbf3c;color:#4a3500}.tester-sync-pin.current{background:#1976d2;color:#fff}.tester-sync-pin::after{content:"";position:absolute;left:50%;bottom:-8px;border-left:7px solid transparent;border-right:7px solid transparent;transform:translateX(-50%)}.tester-sync-pin.selected::after{border-top:9px solid #ffbf3c}.tester-sync-pin.current::after{border-top:9px solid #1976d2}
   </style>
 </head>
 <body>
   <div id="guideModal" class="guide-modal" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
     <div class="guide-dialog">
+      <div class="moraepin-brand"><img src="moraepin-icon.svg" alt="모래핀 앱 아이콘" /><strong>모래핀</strong></div>
       <p class="tag">BUSAN BEACH GUIDE</p>
       <h1 id="guideTitle">해변에서 내 위치를<br />쉽게 찾는 안전 지도</h1>
       <p class="guide-lead">부산 주요 해수욕장의 지도·위치·날씨 정보를 한 곳에서 확인하고, 검증된 해변에는 구역 주소와 공식 해양안전 정보까지 제공합니다.</p>
@@ -80,14 +84,11 @@
       <div class="map-status"><div><span>현재 선택한 위치</span><strong id="selectedAddress">6-D <em>구역</em></strong></div><p id="mapNotice">해변을 선택하면 지도와 안전 정보를 확인할 수 있어요.</p><button id="copyAddress" type="button">주소 복사</button></div>
     </section>
     <aside class="panel">
-      <div class="panel-head"><p class="tag">BEACH SAFETY MAP</p><h2>해변 주소·안전 안내</h2><p>해변을 선택해 지도, 내 위치와 안전 정보를 확인하세요.</p><button id="openGuide" class="text-button" type="button">이 앱은 무엇을 하나요? ›</button></div>
+      <div class="panel-head"><div class="moraepin-brand"><img src="moraepin-icon.svg" alt="" /><strong>모래핀</strong></div><p class="tag">BEACH SAFETY MAP</p><h2>해변 주소·안전 안내</h2><p>해변을 선택해 지도, 내 위치와 안전 정보를 확인하세요.</p><button id="openGuide" class="text-button" type="button">이 앱은 무엇을 하나요? ›</button></div>
       <section class="beach-picker panel-group"><p class="tag">BEACH SELECT</p><label for="beachSelect">해변 선택</label><select id="beachSelect"><option value="haeundae">해운대해수욕장 · 구역 주소 제공</option><option value="gwangalli">광안리해수욕장 · 지도·날씨 제공</option><option value="songjeong">송정해수욕장 · 지도·날씨 제공</option><option value="songdo">송도해수욕장 · 지도·날씨 제공</option></select><p>모든 해변에서 지도·GPS·날씨를 제공하고, 구역 주소·시설·공식 해양정보는 검증 후 순차적으로 확장합니다.</p></section>
       <section class="card location-card"><div class="card-icon">◎</div><div><span>내가 선택한 장소</span><h3 id="panelAddress">6-D 구역 <small>· 10m × 10m</small></h3><p>해운대해수욕장 모래사장</p></div></section>
       <section class="card"><div class="card-title"><div class="card-icon">⌾</div><div><h3>내 현재 위치</h3><p>GPS로 현재 위치를 지도에서 확인해요.</p></div></div><button id="locateMe" class="wide-button active" type="button">내 위치로 격자 찾기 <span>⌖</span></button></section>
-      <section class="missing-child-group" aria-labelledby="missingChildTitle">
-        <section class="emergency-card"><p class="tag">MISSING CHILD · EMERGENCY</p><h3 id="missingChildTitle">미아 찾기 · 긴급 연락</h3><p>이 앱은 신고를 접수하지 않습니다. 112·119 또는 현장 안전요원에게 먼저 연락한 뒤, 지도 위치를 수색 보조 정보로 공유하세요.</p><div><a href="tel:112">112 경찰 신고</a><a href="tel:119">119 구조 요청</a></div></section>
-        <form id="reportForm" class="report-card"><div class="report-title"><span>위치 표시</span><div><h3>미아 마지막 목격 위치 표시</h3><p>선택한 격자 또는 지도 지점을 중심으로 수색 범위를 표시합니다.</p></div></div><label>아동 이름<input id="childName" required placeholder="예: 김해운" /></label><label>옷차림 또는 특징<input id="childDescription" required placeholder="예: 노란 티셔츠, 파란 모자" /></label><div class="report-location"><span>마지막 목격 위치</span><b id="reportAddress">6-D 구역</b></div><button class="report-button" type="submit">지도에 수색 위치 표시하기</button><p id="reportResult" class="report-result" role="status" hidden></p><small>이 기능은 신고 접수가 아니라 수색 위치 공유를 돕는 보조 기능입니다.</small></form>
-      </section>
+      <section class="missing-child-group" aria-labelledby="missingChildTitle"><section class="emergency-card"><p class="tag">MISSING CHILD · EMERGENCY</p><h3 id="missingChildTitle">미아 찾기 · 긴급 연락</h3><p>이 앱은 신고를 접수하지 않습니다. 112·119 또는 현장 안전요원에게 먼저 연락한 뒤, 지도 위치를 수색 보조 정보로 공유하세요.</p><div><a href="tel:112">112 경찰 신고</a><a href="tel:119">119 구조 요청</a></div></section><form id="reportForm" class="report-card"><div class="report-title"><span>위치 표시</span><div><h3>미아 마지막 목격 위치 표시</h3><p>선택한 격자 또는 지도 지점을 중심으로 수색 범위를 표시합니다.</p></div></div><label>아동 이름<input id="childName" required placeholder="예: 김해운" /></label><label>옷차림 또는 특징<input id="childDescription" required placeholder="예: 노란 티셔츠, 파란 모자" /></label><div class="report-location"><span>마지막 목격 위치</span><b id="reportAddress">6-D 구역</b></div><button class="report-button" type="submit">지도에 수색 위치 표시하기</button><p id="reportResult" class="report-result" role="status" hidden></p><small>이 기능은 신고 접수가 아니라 수색 위치 공유를 돕는 보조 기능입니다.</small></form></section>
       <details class="environment-group" open><summary>기상·해양 안전 정보 <span>날씨 · 안전지수 · 해변상태 · 이안류 · 조석</span></summary><div class="environment-body">
         <section class="weather-card" aria-live="polite"><p class="tag">BEACH WEATHER</p><h3 id="weatherBeach">오늘의 해변 날씨</h3><div class="weather-current"><b id="weatherIcon">…</b><strong id="weatherTemp">불러오는 중…</strong><span id="weatherDesc">현재 날씨를 확인하고 있어요.</span></div><div class="weather-details"><span>강수 <b id="weatherRain">–</b></span><span>바람 <b id="weatherWind">–</b></span></div><p id="weatherUpdated" class="weather-updated"></p></section>
         <section class="safety-index-card" aria-live="polite"><p class="tag">BEACH SAFETY INDEX</p><h3>해변 안전 참고지수</h3><div class="safety-index-main"><div id="safetyIndexLight" class="safety-index-light">⚪</div><div><strong id="safetyIndexLabel">계산 중</strong><span id="safetyIndexReason">현재 안전 정보를 확인하고 있어요.</span></div></div><p class="safety-index-note">선택한 해변에서 확인 가능한 데이터만 반영합니다.</p></section>
@@ -102,9 +103,7 @@
   </main>
   <script src="script.js"></script>
   <script>
-    geoFacilities.forEach((facility) => {
-      if (facility.detail.startsWith("팀 현장 조사 좌표 · ")) facility.detail = facility.detail.replace("팀 현장 조사 좌표 · ", "");
-    });
+    geoFacilities.forEach((facility) => { if (facility.detail.startsWith("팀 현장 조사 좌표 · ")) facility.detail = facility.detail.replace("팀 현장 조사 좌표 · ", ""); });
     renderFacilities();
     const RIP_CURRENT_WORKER_URL = "https://beach-guide-rip-current-api.chopyoz1207.workers.dev";
     const RIP_CURRENT_BEACH_CODE = "HAE";
@@ -123,5 +122,33 @@
   </script>
   <script src="multi-beach.js"></script>
   <script src="missing-child.js"></script>
+  <script>
+    (()=>{
+      let selectedDemoOverlay=null,currentDemoOverlay=null;
+      function clear(){if(selectedDemoOverlay){selectedDemoOverlay.setMap(null);selectedDemoOverlay=null;}if(currentDemoOverlay){currentDemoOverlay.setMap(null);currentDemoOverlay=null;}}
+      function pin(text,kind,point,xAnchor){const el=document.createElement('div');el.className=`tester-sync-pin ${kind}`;el.textContent=text;return new kakao.maps.CustomOverlay({map:kakaoMap,position:new kakao.maps.LatLng(point.lat,point.lng),content:el,xAnchor,yAnchor:1.35,zIndex:100});}
+      function syncTester(){
+        if(!document.documentElement.classList.contains('tester-mode'))return;
+        try{
+          const cell=geoGrid.get('D6');
+          if(!cell)return;
+          selectGeoCell('D6',cell.polygon);
+          const c=cell.localPath.reduce((s,p)=>({u:s.u+p.u/4,v:s.v+p.v/4}),{u:0,v:0});
+          const point=toLatLng(c.u,c.v);
+          clear();
+          selectedDemoOverlay=pin('선택 위치 HD-D6','selected',point,1.08);
+          currentDemoOverlay=pin('내 현재 위치 · TEST','current',point,-0.08);
+          if(typeof myLocationMarker!=='undefined'&&myLocationMarker)myLocationMarker.setMap(null);
+          myLocationMarker=new kakao.maps.Marker({map:kakaoMap,position:new kakao.maps.LatLng(point.lat,point.lng),title:'발표용 현재 위치'});
+          kakaoMap.panTo(new kakao.maps.LatLng(point.lat,point.lng));
+          const selected=document.querySelector('#selectedAddress');if(selected)selected.innerHTML='HD-D6 <em>구역</em>';
+          const notice=document.querySelector('#mapNotice');if(notice)notice.textContent='TESTER MODE · 선택한 위치와 내 현재 위치를 모두 HD-D6 격자 안에 맞춰 시연하고 있습니다. 실제 GPS는 사용하지 않습니다.';
+        }catch{}
+      }
+      document.querySelector('#testerDemo')?.addEventListener('click',()=>setTimeout(syncTester,500));
+      document.addEventListener('click',e=>{if(e.target.closest?.('#locateMe')&&document.documentElement.classList.contains('tester-mode'))setTimeout(syncTester,80);},true);
+      document.querySelector('#testerNormal')?.addEventListener('click',()=>{clear();});
+    })();
+  </script>
 </body>
 </html>
